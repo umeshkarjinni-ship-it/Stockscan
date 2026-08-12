@@ -128,3 +128,4 @@ This tool is for research and education only. It does not constitute
 investment advice. Markets carry risk of loss; past signal performance
 (including anything shown by the backtester) does not guarantee future
 results.
+"# Stockscan" 
