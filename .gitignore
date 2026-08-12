@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Runtime output (regenerated on every run — keep folders, ignore contents)
+signals/*
+!signals/.gitkeep
+reports/*
+!reports/.gitkeep
+cache/*
+!cache/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Raw NSE downloads used only as a manual-fallback cache for build_universe.py
+equity_l.csv
+nifty100.csv
+niftymidcap150.csv
+niftysmallcap250.csv
+EQUITY_L.csv
+ind_nifty100list.csv
+ind_niftymidcap150list.csv
+ind_niftysmallcap250list.csv
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp

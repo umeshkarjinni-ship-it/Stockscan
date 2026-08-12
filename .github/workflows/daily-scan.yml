@@ -1,0 +1,56 @@
+name: NiftyPulsePro Daily Scan
+
+on:
+  workflow_dispatch:        # allows manual runs from the Actions tab
+  schedule:
+    - cron: "0 10 * * 1-5"  # 10:00 UTC = 3:30 PM IST, Mon-Fri (NSE close)
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scanner
+        env:
+          SCANNER_EMAIL_FROM: ${{ secrets.SCANNER_EMAIL_FROM }}
+          SCANNER_EMAIL_TO: ${{ secrets.SCANNER_EMAIL_TO }}
+          SCANNER_EMAIL_APP_PASSWORD: ${{ secrets.SCANNER_EMAIL_APP_PASSWORD }}
+          SCANNER_TELEGRAM_TOKEN: ${{ secrets.SCANNER_TELEGRAM_TOKEN }}
+          SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+        run: python -u nse_scanner.py
+
+      - name: Generate signal report
+        run: python -u signal_report.py
+
+      - name: Rank buy candidates
+        run: python -u rank_buy.py
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: niftypulsepro-results-${{ github.run_number }}
+          path: |
+            signals/scan_*.csv
+            signals/failed_symbols.csv
+            signals/daily_signal_report.csv
+            signals/daily_top20_buy.csv
+            signals/daily_top20_sell.csv
+            signals/daily_top20_buy_watchlist.csv
+            signals/daily_top20_sell_watchlist.csv
+            signals/daily_top20_buy_ranked.csv
+          retention-days: 30

@@ -1,0 +1,224 @@
+//@version=5
+strategy("Weekly/Monthly Buy Strategy — VStop + ATR + EMA + RSI + Volume",
+     overlay = true, max_labels_count = 500,
+     initial_capital = 100000, currency = currency.INR,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
+     commission_type = strategy.commission.percent, commission_value = 0.05,
+     process_orders_on_close = true, calc_on_every_tick = false)
+
+// =========================================================================
+// HOW TO USE
+// - For BACKTESTING: set the chart timeframe to Weekly or Monthly, then open
+//   the "Strategy Tester" tab to see win rate, drawdown, equity curve, etc.
+// - The TABLE (top-right) shows Weekly AND Monthly status simultaneously,
+//   regardless of what timeframe the chart itself is on — so you can check
+//   a stock's monthly trend while charting it on weekly, or vice versa.
+// - Signals only close-confirm (process_orders_on_close = true) to avoid
+//   repainting in the backtest. The realtime forming candle's row in the
+//   table will still update live like any indicator (normal behavior).
+// - This is a decision-support / backtesting tool, NOT a guarantee of future
+//   returns. Test across many stocks and market cycles before risking capital.
+// =========================================================================
+
+// ---------------- Inputs ----------------
+grp1 = "Volatility Stop (ATR Trailing Stop)"
+atrLen  = input.int(14, "ATR Length", group = grp1)
+atrMult = input.float(3.0, "ATR Multiplier", step = 0.1, group = grp1)
+
+grp2 = "Trend Filter (EMA)"
+emaFastLen = input.int(20, "Fast EMA", group = grp2)
+emaMidLen  = input.int(50, "Mid EMA", group = grp2)
+emaSlowLen = input.int(100, "Slow EMA", group = grp2)
+requireEmaStack = input.bool(true, "Require EMA20 > EMA50 > EMA100 (strict uptrend)", group = grp2)
+
+grp3 = "Momentum Filter (RSI)"
+rsiLen        = input.int(14, "RSI Length", group = grp3)
+rsiBuyLevel   = input.int(50, "RSI must be above", group = grp3)
+rsiOverbought = input.int(78, "Avoid buy if RSI above (overbought)", group = grp3)
+
+grp4 = "Volume Confirmation"
+volMaLen   = input.int(20, "Volume MA Length", group = grp4)
+volMultReq = input.float(1.2, "Buy candle volume must exceed MA x", step = 0.1, group = grp4)
+
+grp7 = "Trend Strength (ADX) — filters choppy/sideways conditions"
+adxLen       = input.int(14, "ADX Length", group = grp7)
+adxThreshold = input.int(20, "Require ADX above this to accept a BUY", group = grp7)
+
+grp8 = "Market Regime & Multi-Timeframe Confluence"
+useRegimeFilter = input.bool(true, "Require NIFTY 50 uptrend on same timeframe", group = grp8)
+regimeSymbol    = input.symbol("NSE:NIFTY", "Index symbol for regime check", group = grp8)
+requireMonthlyConfluence = input.bool(true, "Weekly BUY also requires Monthly uptrend", group = grp8)
+
+grp5 = "Backtest / Strategy"
+useStopLoss = input.bool(true, "Exit on Volatility Stop flip (recommended)", group = grp5)
+tradeDirection = input.string("Long Only", "Trade Direction", options = ["Long Only", "Long + Short"], group = grp5)
+
+grp6 = "Display"
+showBackground = input.bool(true, "Shade background by trend", group = grp6)
+showTable      = input.bool(true, "Show Weekly/Monthly status table", group = grp6)
+
+// ---------------- Core Signal Engine (reusable via request.security) ----------------
+f_signal() =>
+    src = close
+    atrVal = atrMult * ta.atr(atrLen)
+
+    var float stop    = na
+    var bool  uptrend = true
+    var float extreme = na
+
+    extreme := na(extreme) ? src : (uptrend ? math.max(extreme, src) : math.min(extreme, src))
+    newStop  = uptrend ? extreme - atrVal : extreme + atrVal
+
+    if na(stop)
+        stop := newStop
+    else
+        stop := uptrend ? math.max(stop, newStop) : math.min(stop, newStop)
+
+    flip = uptrend ? src < stop : src > stop
+    if flip
+        uptrend := not uptrend
+        extreme := src
+        stop    := uptrend ? src - atrVal : src + atrVal
+
+    flipToUp   = flip and uptrend
+    flipToDown = flip and not uptrend
+
+    emaFast = ta.ema(src, emaFastLen)
+    emaMid  = ta.ema(src, emaMidLen)
+    emaSlow = ta.ema(src, emaSlowLen)
+    emaTrendOk = requireEmaStack ? (emaFast > emaMid and emaMid > emaSlow) : (src > emaMid)
+
+    rsiVal = ta.rsi(src, rsiLen)
+    rsiOk  = rsiVal > rsiBuyLevel and rsiVal < rsiOverbought
+
+    volMa = ta.sma(volume, volMaLen)
+    volOk = volume > volMa * volMultReq
+
+    [diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+    adxOk = adxVal > adxThreshold
+
+    buySignal  = flipToUp and emaTrendOk and rsiOk and volOk and adxOk
+    sellSignal = flipToDown
+
+    [stop, emaFast, emaMid, emaSlow, rsiVal, buySignal, sellSignal, uptrend, src, volume, volMa, adxVal]
+
+// Lightweight version used only to check another symbol's (NIFTY's) trend
+// direction for the market regime filter — same VStop math, single output.
+f_regimeUptrend() =>
+    src = close
+    atrVal = atrMult * ta.atr(atrLen)
+    var float stop    = na
+    var bool  uptrend = true
+    var float extreme = na
+    extreme := na(extreme) ? src : (uptrend ? math.max(extreme, src) : math.min(extreme, src))
+    newStop  = uptrend ? extreme - atrVal : extreme + atrVal
+    if na(stop)
+        stop := newStop
+    else
+        stop := uptrend ? math.max(stop, newStop) : math.min(stop, newStop)
+    flip = uptrend ? src < stop : src > stop
+    if flip
+        uptrend := not uptrend
+        extreme := src
+        stop    := uptrend ? src - atrVal : src + atrVal
+    uptrend
+
+// ---------------- Run on current chart timeframe (drives the strategy) ----------------
+[stop, emaFast, emaMid, emaSlow, rsiVal, coreBuySignal, sellSignal, uptrend, price, vol, volMa, adxVal] = f_signal()
+
+// ---------------- Pull Weekly & Monthly for the table (independent of chart TF) ----------------
+[wStop, wEmaFast, wEmaMid, wEmaSlow, wRsi, wBuyCore, wSell, wUp, wPrice, wVol, wVolMa, wAdx] =
+     request.security(syminfo.tickerid, "W", f_signal(), lookahead = barmerge.lookahead_off)
+
+[mStop, mEmaFast, mEmaMid, mEmaSlow, mRsi, mBuyCore, mSell, mUp, mPrice, mVol, mVolMa, mAdx] =
+     request.security(syminfo.tickerid, "M", f_signal(), lookahead = barmerge.lookahead_off)
+
+// ---------------- Market Regime (NIFTY 50 trend on each timeframe) ----------------
+niftyWeeklyUp  = request.security(regimeSymbol, "W", f_regimeUptrend(), lookahead = barmerge.lookahead_off)
+niftyMonthlyUp = request.security(regimeSymbol, "M", f_regimeUptrend(), lookahead = barmerge.lookahead_off)
+
+regimeOkWeekly  = not useRegimeFilter or niftyWeeklyUp
+regimeOkMonthly = not useRegimeFilter or niftyMonthlyUp
+regimeOkCurrent = timeframe.isweekly ? regimeOkWeekly : timeframe.ismonthly ? regimeOkMonthly : true
+
+// ---------------- Multi-Timeframe Confluence (Weekly needs Monthly backing) ----------------
+confluenceOkWeekly = not requireMonthlyConfluence or wUp   // this stock's own monthly trend
+confluenceOkCurrent = (requireMonthlyConfluence and timeframe.isweekly) ? mUp : true
+
+// ---------------- Final signals (core + regime + confluence layered on) ----------------
+buySignal = coreBuySignal and regimeOkCurrent and confluenceOkCurrent
+wBuy = wBuyCore and regimeOkWeekly and confluenceOkWeekly
+mBuy = mBuyCore and regimeOkMonthly   // Monthly is already the top timeframe
+
+// ---------------- Strategy Orders ----------------
+if buySignal
+    strategy.entry("Long", strategy.long)
+
+if useStopLoss and sellSignal
+    strategy.close("Long", comment = "VStop Exit")
+
+if tradeDirection == "Long + Short"
+    if sellSignal
+        strategy.entry("Short", strategy.short)
+    if useStopLoss and buySignal
+        strategy.close("Short", comment = "VStop Exit")
+
+// ---------------- Plots ----------------
+plot(stop, "Volatility Stop", color = uptrend ? color.new(color.green, 0) : color.new(color.red, 0), linewidth = 2, style = plot.style_linebr)
+plot(emaFast, "EMA Fast", color = color.new(color.aqua, 40))
+plot(emaMid,  "EMA Mid",  color = color.new(color.orange, 40))
+plot(emaSlow, "EMA Slow", color = color.new(color.purple, 40))
+
+plotshape(buySignal, title = "Buy", style = shape.labelup, location = location.belowbar,
+     color = color.new(color.green, 0), text = "BUY", textcolor = color.white, size = size.small)
+plotshape(sellSignal, title = "Sell/Exit", style = shape.labeldown, location = location.abovebar,
+     color = color.new(color.red, 0), text = "EXIT", textcolor = color.white, size = size.small)
+
+bgcolor(showBackground ? (uptrend ? color.new(color.green, 92) : color.new(color.red, 92)) : na)
+
+// ---------------- Weekly / Monthly Status Table ----------------
+f_sigText(buy, sell) =>
+    buy ? "BUY" : sell ? "EXIT" : "-"
+
+f_fmtVol(v) =>
+    v >= 10000000 ? str.tostring(math.round(v / 10000000, 2)) + "Cr" :
+     v >= 100000  ? str.tostring(math.round(v / 100000, 2)) + "L" :
+     str.tostring(math.round(v, 0))
+
+if showTable
+    var table t = table.new(position.top_right, 7, 3, border_width = 1, bgcolor = color.new(color.black, 80))
+    hdrCol = color.new(color.gray, 20)
+
+    table.cell(t, 0, 0, "Timeframe", bgcolor = hdrCol, text_color = color.white, text_size = size.small)
+    table.cell(t, 1, 0, "Trend",     bgcolor = hdrCol, text_color = color.white, text_size = size.small)
+    table.cell(t, 2, 0, "Price",     bgcolor = hdrCol, text_color = color.white, text_size = size.small)
+    table.cell(t, 3, 0, "Volume",    bgcolor = hdrCol, text_color = color.white, text_size = size.small)
+    table.cell(t, 4, 0, "RSI",       bgcolor = hdrCol, text_color = color.white, text_size = size.small)
+    table.cell(t, 5, 0, "ADX",       bgcolor = hdrCol, text_color = color.white, text_size = size.small)
+    table.cell(t, 6, 0, "Signal",    bgcolor = hdrCol, text_color = color.white, text_size = size.small)
+
+    table.cell(t, 0, 1, "Weekly", text_size = size.small)
+    table.cell(t, 1, 1, wUp ? "UP" : "DOWN", bgcolor = wUp ? color.new(color.green, 70) : color.new(color.red, 70), text_size = size.small)
+    table.cell(t, 2, 1, str.tostring(math.round(wPrice, 2)), text_size = size.small)
+    table.cell(t, 3, 1, f_fmtVol(wVol) + (wVol > wVolMa * volMultReq ? " ▲" : ""), text_size = size.small)
+    table.cell(t, 4, 1, str.tostring(math.round(wRsi, 1)), text_size = size.small)
+    table.cell(t, 5, 1, str.tostring(math.round(wAdx, 1)), text_size = size.small)
+    table.cell(t, 6, 1, f_sigText(wBuy, wSell),
+         bgcolor = wBuy ? color.new(color.green, 40) : wSell ? color.new(color.red, 40) : na,
+         text_color = color.white, text_size = size.small)
+
+    table.cell(t, 0, 2, "Monthly", text_size = size.small)
+    table.cell(t, 1, 2, mUp ? "UP" : "DOWN", bgcolor = mUp ? color.new(color.green, 70) : color.new(color.red, 70), text_size = size.small)
+    table.cell(t, 2, 2, str.tostring(math.round(mPrice, 2)), text_size = size.small)
+    table.cell(t, 3, 2, f_fmtVol(mVol) + (mVol > mVolMa * volMultReq ? " ▲" : ""), text_size = size.small)
+    table.cell(t, 4, 2, str.tostring(math.round(mRsi, 1)), text_size = size.small)
+    table.cell(t, 5, 2, str.tostring(math.round(mAdx, 1)), text_size = size.small)
+    table.cell(t, 6, 2, f_sigText(mBuy, mSell),
+         bgcolor = mBuy ? color.new(color.green, 40) : mSell ? color.new(color.red, 40) : na,
+         text_color = color.white, text_size = size.small)
+
+// ---------------- Alerts ----------------
+alertcondition(buySignal,  title = "Buy Signal",  message = "{{ticker}}: BUY signal on current chart timeframe (VStop flip + trend + RSI + volume confirmed)")
+alertcondition(sellSignal, title = "Sell/Exit Signal", message = "{{ticker}}: Volatility Stop flipped to downtrend — consider exit")
+alertcondition(wBuy, title = "Weekly Buy Signal", message = "{{ticker}}: WEEKLY BUY signal confirmed")
+alertcondition(mBuy, title = "Monthly Buy Signal", message = "{{ticker}}: MONTHLY BUY signal confirmed")
