@@ -1,0 +1,60 @@
+name: Run Backtest
+
+on:
+  workflow_dispatch:   # manual trigger only — click "Run workflow" in the Actions tab
+    inputs:
+      dev_mode:
+        description: "Limit to a small symbol subset for a quick test run"
+        type: boolean
+        default: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90   # full-universe backtests can take a while
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Force dev mode off for full run
+        if: ${{ inputs.dev_mode == false }}
+        run: sed -i 's/^DEV_MODE = True/DEV_MODE = False/' run_backtest.py
+
+      - name: Replay signals
+        run: python -u run_backtest.py
+
+      - name: Simulate trades
+        run: python -u -m backtest.simulator
+
+      - name: Build text report
+        run: python -u -m backtest.report
+
+      - name: Build charts
+        run: python -u -m backtest.charts
+
+      - name: Upload backtest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results-${{ github.run_number }}
+          path: |
+            signals/backtest_signals.csv
+            signals/backtest_trades.csv
+            signals/backtest_report.txt
+            signals/equity_curve.png
+            signals/drawdown_curve.png
+            signals/monthly_returns.png
+            signals/trade_return_histogram.png
+            signals/win_loss_pie.png
+          retention-days: 30
