@@ -246,3 +246,9 @@ class TradeSimulator:
         return pd.DataFrame(
             [asdict(x) for x in self.trades]
         )
+
+
+# ----------------------------------------------------------------------
+
+if __name__ == "__main__":
+    TradeSimulator(holding_period=20).run()
