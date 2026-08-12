@@ -27,7 +27,7 @@ symbols = (
 )
 
 # ---------- DEVELOPMENT MODE ----------
-DEV_MODE = True
+DEV_MODE = False
 DEV_SYMBOLS = 50
 
 if DEV_MODE:
