@@ -27,9 +27,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Force dev mode off for full run
-        if: ${{ inputs.dev_mode == false }}
-        run: sed -i 's/^DEV_MODE = True/DEV_MODE = False/' run_backtest.py
+      - name: Set DEV_MODE for this run
+        run: |
+          if [ "${{ inputs.dev_mode }}" = "true" ]; then
+            sed -i 's/^DEV_MODE = .*/DEV_MODE = True/' run_backtest.py
+            echo "Quick test mode: limited to $(grep '^DEV_SYMBOLS' run_backtest.py) symbols"
+          else
+            sed -i 's/^DEV_MODE = .*/DEV_MODE = False/' run_backtest.py
+            echo "Full run: all symbols in the universe"
+          fi
 
       - name: Replay signals
         run: python -u run_backtest.py

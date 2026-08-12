@@ -10,6 +10,9 @@ env/
 # Runtime output (regenerated on every run — keep folders, ignore contents)
 signals/*
 !signals/.gitkeep
+# Exception: the paper trade tracker must persist across runs to be useful
+!signals/paper_trades.csv
+!signals/paper_trade_summary.txt
 reports/*
 !reports/.gitkeep
 cache/*
