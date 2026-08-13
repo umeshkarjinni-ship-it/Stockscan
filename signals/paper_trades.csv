@@ -1,0 +1,6 @@
+Symbol,Timeframe,EntryDate,EntryPrice,BuyScore,Status,LastCheckedDate,LastPrice,UnrealizedReturnPct,ExitDate,ExitPrice,ReturnPct,HoldingDays,ExitReason
+GABRIEL,Monthly,2026-08-12,1389.13,80.0,OPEN,2026-08-12,1389.13,0.0,,,,0,
+BOSCHLTD,Monthly,2026-08-12,41278.36,74.0,OPEN,2026-08-12,41278.36,0.0,,,,0,
+GODREJIND,Monthly,2026-08-12,1309.4,72.0,OPEN,2026-08-12,1309.4,0.0,,,,0,
+LALPATHLAB,Monthly,2026-08-12,1878.8,72.0,OPEN,2026-08-12,1878.8,0.0,,,,0,
+EXIDEIND,Monthly,2026-08-12,452.7,69.0,OPEN,2026-08-12,452.7,0.0,,,,0,

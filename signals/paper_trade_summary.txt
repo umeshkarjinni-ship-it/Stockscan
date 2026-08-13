@@ -1,0 +1,15 @@
+============================================================
+  NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
+============================================================
+
+Generated        : 12-Aug-2026 19:58
+Open positions   : 5
+Closed positions : 0
+
+No closed trades yet — check back once positions reach
+the 20-trading-day holding period.
+
+Not financial advice — forward-tracked results only reflect
+this specific rule set and holding period, not any trade you
+actually placed.
+============================================================
