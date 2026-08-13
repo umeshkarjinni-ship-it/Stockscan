@@ -11,7 +11,10 @@ permissions:
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 300   # a full 2,075-symbol scan can take well over an
+                            # hour (10y of daily data x thousands of tickers)
+                            # — this was previously 30, which cut the run
+                            # off after only ~500 symbols
 
     steps:
       - name: Checkout repository
@@ -45,13 +48,16 @@ jobs:
       - name: Track daily recommendations forward
         run: python -u paper_trade_tracker.py
 
-      - name: Commit paper trade tracker state
+      - name: Build dashboard
+        run: python -u build_dashboard.py
+
+      - name: Commit paper trade tracker + dashboard
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add signals/paper_trades.csv signals/paper_trade_summary.txt
-          git diff --staged --quiet || git commit -m "Update paper trade tracker [skip ci]"
+          git add signals/paper_trades.csv signals/paper_trade_summary.txt docs/index.html
+          git diff --staged --quiet || git commit -m "Update paper trade tracker + dashboard [skip ci]"
           git push || echo "Nothing to push"
 
       - name: Upload results

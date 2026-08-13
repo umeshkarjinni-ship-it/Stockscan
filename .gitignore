@@ -35,3 +35,5 @@ ind_niftysmallcap250list.csv
 .vscode/
 .idea/
 *.swp
+
+# docs/index.html is committed by the workflow (dashboard) — keep tracked

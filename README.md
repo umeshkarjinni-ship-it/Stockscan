@@ -20,6 +20,8 @@ in `pine/`).
 | `daily_runner.py` | Optional always-on Python scheduler if you can't use cron / GitHub Actions. |
 | `run_backtest.py` | Runs a historical replay of the scanner's signals over `backtest/`. |
 | `test_simulator.py` | Minimal smoke test for `backtest.simulator`. |
+| `build_dashboard.py` | Reads the day's CSVs/reports and generates a single-page HTML dashboard at `docs/index.html` — so you can check results by opening one page instead of digging through CSVs. |
+| `docs/index.html` | The generated dashboard. Publish it with GitHub Pages (see below) for a permanent URL, or just open the file locally in a browser. |
 | `backtest/` | Backtesting package: replay engine, trade simulator, exit rules, performance metrics, charts, and text report. |
 | `stocks_universe.csv` | Small starter universe (hand-picked). |
 | `stocks_universe_full.csv` | Full ~1,900-symbol universe with Category tags, as produced by `build_universe.py`. |
@@ -66,6 +68,27 @@ python run_backtest.py
 
 Tune capital, costs, holding periods, and exit rules (VSTOP reversal / ATR
 stop / trailing stop / profit target) in `backtest/config.py`.
+
+## Dashboard
+
+Instead of opening CSVs, run:
+
+```bash
+python build_dashboard.py
+```
+
+and open `docs/index.html` in a browser — a single page showing today's
+BUY/SELL signals, the paper trade tracker, and the backtest summary.
+
+The GitHub Actions workflow regenerates and commits this automatically
+after every daily scan. To get a permanent URL for it instead of
+downloading the file each time:
+
+1. On GitHub, go to your repo's **Settings → Pages**.
+2. Under "Build and deployment", set **Source** to "Deploy from a branch".
+3. Set **Branch** to `main`, folder to `/docs`, then **Save**.
+4. After the next scan runs, your dashboard is live at
+   `https://<your-username>.github.io/<repo-name>/`.
 
 ### Scheduling
 
@@ -128,4 +151,3 @@ This tool is for research and education only. It does not constitute
 investment advice. Markets carry risk of loss; past signal performance
 (including anything shown by the backtester) does not guarantee future
 results.
-"# Stockscan" 
