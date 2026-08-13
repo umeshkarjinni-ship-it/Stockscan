@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NiftyPulsePro Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10141B;
+    --panel: #171D27;
+    --border: #262E3A;
+    --text: #E8EAED;
+    --muted: #8B93A1;
+    --gold: #D4A24C;
+    --pos: #4ADE80;
+    --neg: #F87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    padding-bottom: 60px;
+  }
+  h1, h2 { font-family: 'Newsreader', serif; font-weight: 600; margin: 0; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  .ticker-wrap {
+    background: #0B0E13;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 10px 0;
+  }
+  .ticker {
+    display: inline-block;
+    animation: scroll 40s linear infinite;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+  }
+  .ticker:hover { animation-play-state: paused; }
+  .tick { margin: 0 28px; color: var(--muted); }
+  .tick.buy { color: var(--pos); }
+  .tick.sell { color: var(--neg); }
+  .tick b { color: var(--text); }
+  @keyframes scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce) { .ticker { animation: none; } }
+
+  header {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px 24px;
+  }
+  header h1 { font-size: 32px; letter-spacing: 0.3px; }
+  header .eyebrow {
+    color: var(--gold);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  header .meta { color: var(--muted); font-size: 14px; margin-top: 8px; }
+
+  .cards {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 32px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+  }
+  .card-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .card-value { font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 600; }
+
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px 24px;
+  }
+  .panel h2 { font-size: 20px; margin-bottom: 14px; }
+  .panel h2 .subhead { font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #1C222C;
+    font-family: 'IBM Plex Mono', monospace;
+    white-space: nowrap;
+  }
+  tbody tr:hover { background: #1B222D; }
+  .buy-row tbody tr td:first-child { color: var(--pos); font-weight: 600; }
+  .sell-row tbody tr td:first-child { color: var(--neg); font-weight: 600; }
+
+  .badge {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    letter-spacing: 0.5px;
+  }
+  .badge.open { background: rgba(212,162,76,0.15); color: var(--gold); }
+  .badge.closed { background: rgba(139,147,161,0.15); color: var(--muted); }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .stat {
+    display: flex;
+    justify-content: space-between;
+    background: #10151D;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+  .stat span { color: var(--muted); }
+  .stat b { font-family: 'IBM Plex Mono', monospace; }
+
+  footer {
+    max-width: 1100px;
+    margin: 32px auto 0;
+    padding: 0 24px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="ticker-wrap"><div class="ticker"><span class="tick buy">▲ GABRIEL <b>1389.13</b></span><span class="tick buy">▲ BOSCHLTD <b>41278.36</b></span><span class="tick buy">▲ GODREJIND <b>1309.40</b></span><span class="tick buy">▲ LALPATHLAB <b>1878.80</b></span><span class="tick buy">▲ EXIDEIND <b>452.70</b></span><span class="tick sell">▼ POWERGRID <b>271.60</b></span><span class="tick sell">▼ CEMPRO <b>1208.10</b></span><span class="tick buy">▲ GABRIEL <b>1389.13</b></span><span class="tick buy">▲ BOSCHLTD <b>41278.36</b></span><span class="tick buy">▲ GODREJIND <b>1309.40</b></span><span class="tick buy">▲ LALPATHLAB <b>1878.80</b></span><span class="tick buy">▲ EXIDEIND <b>452.70</b></span><span class="tick sell">▼ POWERGRID <b>271.60</b></span><span class="tick sell">▼ CEMPRO <b>1208.10</b></span></div></div>
+
+<header>
+  <div class="eyebrow">NSE / BSE · Weekly &amp; Monthly Trend Scanner</div>
+  <h1>NiftyPulsePro Dashboard</h1>
+  <div class="meta">Last updated 13 Aug 2026, 01:56 &nbsp;·&nbsp; Research tool, not financial advice</div>
+</header>
+
+<div class="cards">
+<div class="card"><div class="card-label">Today's BUY signals</div><div class="card-value ">5</div></div><div class="card"><div class="card-label">Today's SELL signals</div><div class="card-value ">2</div></div><div class="card"><div class="card-label">Open paper positions</div><div class="card-value ">5</div></div><div class="card"><div class="card-label">Closed paper trades</div><div class="card-value ">0</div></div><div class="card"><div class="card-label">Paper win rate</div><div class="card-value ">—</div></div><div class="card"><div class="card-label">Paper avg return</div><div class="card-value ">—</div></div>
+</div>
+
+<main>
+
+    <section class="panel">
+      <h2>Today's Top BUY Signals</h2>
+      <div class="table-wrap">
+        <table class="buy-row">
+          <thead><tr><th>Symbol</th><th>Name</th><th>Category</th><th>Timeframe</th><th>Price</th><th>BuyScore</th><th>RSI</th><th>ADX</th></tr></thead>
+          <tbody><tr><td>GABRIEL</td><td>Gabriel India Limited</td><td>Small</td><td>Monthly</td><td>1389.13</td><td>80.00</td><td>71.90</td><td>42.50</td></tr><tr><td>BOSCHLTD</td><td>Bosch Limited</td><td>Large</td><td>Monthly</td><td>41278.36</td><td>74.00</td><td>63.70</td><td>32.00</td></tr><tr><td>GODREJIND</td><td>Godrej Industries Limited</td><td>Mid</td><td>Monthly</td><td>1309.40</td><td>72.00</td><td>61.30</td><td>27.80</td></tr><tr><td>LALPATHLAB</td><td>Dr. Lal Path Labs Ltd.</td><td>Small</td><td>Monthly</td><td>1878.80</td><td>72.00</td><td>67.80</td><td>23.60</td></tr><tr><td>EXIDEIND</td><td>Exide Industries Limited</td><td>Mid</td><td>Monthly</td><td>452.70</td><td>69.00</td><td>62.70</td><td>24.70</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Today's Top SELL Signals</h2>
+      <div class="table-wrap">
+        <table class="sell-row">
+          <thead><tr><th>Symbol</th><th>Name</th><th>Category</th><th>Timeframe</th><th>Price</th><th>RSI</th><th>ADX</th></tr></thead>
+          <tbody><tr><td>POWERGRID</td><td>Power Grid Corporation of India Limited</td><td>Large</td><td>Weekly</td><td>271.60</td><td>39.00</td><td>17.30</td></tr><tr><td>CEMPRO</td><td>Cemindia Projects Limited</td><td>Small</td><td>Weekly</td><td>1208.10</td><td>57.00</td><td>44.40</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Paper Trade Tracker <span class="subhead">— today's picks, tracked forward</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Symbol</th><th>Timeframe</th><th>Entry Date</th><th>Entry Price</th><th>Days Held</th><th>Return</th></tr></thead>
+          <tbody><tr><td>GABRIEL</td><td>Monthly</td><td>2026-08-12</td><td>1389.13</td><td>0</td><td class=''>0.00% <span class="badge open">OPEN</span></td></tr><tr><td>BOSCHLTD</td><td>Monthly</td><td>2026-08-12</td><td>41278.36</td><td>0</td><td class=''>0.00% <span class="badge open">OPEN</span></td></tr><tr><td>GODREJIND</td><td>Monthly</td><td>2026-08-12</td><td>1309.40</td><td>0</td><td class=''>0.00% <span class="badge open">OPEN</span></td></tr><tr><td>LALPATHLAB</td><td>Monthly</td><td>2026-08-12</td><td>1878.80</td><td>0</td><td class=''>0.00% <span class="badge open">OPEN</span></td></tr><tr><td>EXIDEIND</td><td>Monthly</td><td>2026-08-12</td><td>452.70</td><td>0</td><td class=''>0.00% <span class="badge open">OPEN</span></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+<section class="panel"><h2>Backtest Summary</h2><p class="empty">No backtest report yet — run the "Run Backtest" workflow to generate one.</p></section>
+</main>
+
+<footer>
+  Generated automatically by build_dashboard.py from the latest signals/ output.
+  Signals are pure price/volume technicals with no fundamental or macro context —
+  validate before acting on anything shown here.
+</footer>
+
+</body>
+</html>
