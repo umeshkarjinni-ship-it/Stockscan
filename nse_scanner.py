@@ -54,7 +54,7 @@ UNIVERSE_CSV = "stocks_universe_full.csv"     # Symbol, Name, Category columns
 # point this at its output instead:
 #   UNIVERSE_CSV = "stocks_universe_full.csv"
 
-INCLUDE_OTHER_CATEGORY = False           # "Other" = micro-caps/recent listings/
+INCLUDE_OTHER_CATEGORY = True           # "Other" = micro-caps/recent listings/
                                           # thin liquidity from build_universe.py.
                                           # Set True to scan them too (slower,
                                           # noisier signals due to low volume).
