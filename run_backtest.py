@@ -25,6 +25,7 @@ from nse_scanner import (
     load_universe,
     fetch_nifty_daily,
     UNIVERSE_CSV,
+    INCLUDE_OTHER_CATEGORY,
 )
 
 # The live scanner runs both timeframes, so the backtest should too —
@@ -38,6 +39,26 @@ print("=" * 70)
 print("Loading universe...")
 
 un = load_universe(UNIVERSE_CSV)
+
+# Apply the same "Other" category filter the live scanner uses.
+#
+# NOTE: that filter lives inside nse_scanner.scan(), NOT in
+# load_universe(), so the backtest previously loaded all ~2,075 symbols
+# regardless of INCLUDE_OTHER_CATEGORY — meaning the backtest and the
+# live scan were testing different universes. Mirroring it here keeps
+# them consistent.
+#
+# "Other" = micro-caps, recent listings, and thin-liquidity names. Beyond
+# being slow to backtest, they're the main source of corrupt price data
+# (unadjusted splits show up as implausible one-day moves) and generally
+# aren't executable at size anyway.
+if not INCLUDE_OTHER_CATEGORY and "Category" in un.columns:
+    before = len(un)
+    un = un[un["Category"].str.strip().str.lower() != "other"]
+    skipped = before - len(un)
+    if skipped:
+        print(f"Skipping {skipped} 'Other' category symbols "
+              f"(set INCLUDE_OTHER_CATEGORY=True in nse_scanner.py to include).")
 
 symbols = (
     un["Symbol"]
@@ -90,12 +111,20 @@ for tf in TIMEFRAMES:
     else:
         print(f"{tf}: no signals recorded.")
 
+    # Save after EVERY timeframe rather than only at the very end. A
+    # full-universe two-timeframe run can push against GitHub's 6-hour
+    # job limit, and without this an overrun would discard hours of
+    # completed work. Writing here means a killed job still leaves usable
+    # partial results behind.
+    if all_events:
+        pd.DataFrame(all_events).to_csv(cfg.SIGNALS_FILE, index=False)
+        print(f"  (saved {len(all_events)} signals so far to {cfg.SIGNALS_FILE})")
+
 # engine.run() writes each timeframe's own pass to SIGNALS_FILE, so the
-# second pass would otherwise overwrite the first. Write the combined
-# set explicitly at the end.
+# second pass would otherwise overwrite the first. The combined set has
+# already been written above; this just reports the final tally.
 if all_events:
     combined = pd.DataFrame(all_events)
-    combined.to_csv(cfg.SIGNALS_FILE, index=False)
     print()
     print(f"Combined {len(combined)} signals across {len(TIMEFRAMES)} timeframe(s)")
     print(f"Saved to {cfg.SIGNALS_FILE}")

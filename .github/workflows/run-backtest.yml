@@ -11,7 +11,13 @@ on:
 jobs:
   backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 90   # full-universe backtests can take a while
+    timeout-minutes: 180   # ~500 Large/Mid/Small cap symbols across both
+                            # Weekly and Monthly timeframes takes roughly
+                            # 90 minutes at ~11 symbols/min — this leaves
+                            # generous headroom. Raise toward GitHub's
+                            # 360-minute hard cap only if you set
+                            # INCLUDE_OTHER_CATEGORY = True (~2,075 symbols),
+                            # which likely will NOT fit in one job.
 
     steps:
       - name: Checkout repository
