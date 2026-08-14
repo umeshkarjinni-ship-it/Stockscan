@@ -102,7 +102,7 @@ def calculate_score(row):
     # --------------------------------------------------------
     # 3. VOLUME — 15 points
     # --------------------------------------------------------
-    vol_ratio = num(row, "VolRatio")
+    vol_ratio = num(row, "VolumeRatio")
 
     if vol_ratio >= 2.0:
         score += 15
@@ -254,7 +254,7 @@ def main():
         "BuyScore",
         "RSI",
         "ADX",
-        "VolRatio",
+        "VolumeRatio",
         "VolAboveAvg",
         "VStop",
         "Trend",
@@ -295,7 +295,7 @@ def main():
             "BuyScore",
             "RSI",
             "ADX",
-            "VolRatio",
+            "VolumeRatio",
         ]
         if c in top20.columns
     ]

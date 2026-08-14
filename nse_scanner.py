@@ -54,7 +54,7 @@ UNIVERSE_CSV = "stocks_universe_full.csv"     # Symbol, Name, Category columns
 # point this at its output instead:
 #   UNIVERSE_CSV = "stocks_universe_full.csv"
 
-INCLUDE_OTHER_CATEGORY = True           # "Other" = micro-caps/recent listings/
+INCLUDE_OTHER_CATEGORY = False           # "Other" = micro-caps/recent listings/
                                           # thin liquidity from build_universe.py.
                                           # Set True to scan them too (slower,
                                           # noisier signals due to low volume).
@@ -952,6 +952,14 @@ def scan() -> pd.DataFrame:
                         "BUY_OBV_OK": bool(last["BUY_OBV_OK"]),
                         "BUY_RS_OK": bool(last["BUY_RS_OK"]),
                         "BUY_CoreOK": core_buy,
+
+                        # Numeric relative-strength value (stock/NIFTY ratio
+                        # line) — kept alongside the existing RelStrengthOK
+                        # boolean so the live scan exposes the same feature
+                        # the backtester trains on.
+                        "RS_LINE": (round(float(last["RS_LINE"]), 4)
+                                    if "RS_LINE" in last.index and not pd.isna(last["RS_LINE"])
+                                    else ""),
 
                         "Signal": "BUY" if final_buy else ("SELL" if last["SELL_SIGNAL"] else "-"),
                     })

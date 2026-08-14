@@ -20,6 +20,8 @@ in `pine/`).
 | `daily_runner.py` | Optional always-on Python scheduler if you can't use cron / GitHub Actions. |
 | `run_backtest.py` | Runs a historical replay of the scanner's signals over `backtest/`. |
 | `test_simulator.py` | Minimal smoke test for `backtest.simulator`. |
+| `ml/train_model.py` | Trains a real, validated classifier (gradient boosting) on `backtest_trades.csv` to predict win probability — see "ML win-probability model" below. |
+| `ml/predict.py` | Scores today's BUY candidates with the trained model, producing `daily_top20_buy_ml_ranked.csv`. |
 | `build_dashboard.py` | Reads the day's CSVs/reports and generates a single-page HTML dashboard at `docs/index.html` — so you can check results by opening one page instead of digging through CSVs. |
 | `docs/index.html` | The generated dashboard. Publish it with GitHub Pages (see below) for a permanent URL, or just open the file locally in a browser. |
 | `backtest/` | Backtesting package: replay engine, trade simulator, exit rules, performance metrics, charts, and text report. |
@@ -68,6 +70,42 @@ python run_backtest.py
 
 Tune capital, costs, holding periods, and exit rules (VSTOP reversal / ATR
 stop / trailing stop / profit target) in `backtest/config.py`.
+
+## ML win-probability model
+
+`rank_buy.py`'s `BuyScore` is a hand-picked 100-point rubric (fixed
+points for RSI bands, ADX strength, etc.) — never statistically
+validated against what actually happened afterward. `ml/` adds a real
+alternative: a gradient-boosting classifier trained on your own
+`backtest_trades.csv`, evaluated on a held-out, chronologically later
+slice of trades (not randomly shuffled, to avoid lookahead bias).
+
+**Setup (one-time, then periodically):**
+
+```bash
+# 1. Generate a FULL backtest (not the 50-symbol quick test) — see
+#    "Backtesting" above. You need a few hundred+ trades minimum.
+python run_backtest.py
+python -m backtest.simulator
+
+# 2. Train the model
+python -m ml.train_model
+```
+
+This prints validation accuracy, ROC-AUC, and feature importances so you
+can judge honestly whether it's actually predictive — an ROC-AUC near
+0.5 means "barely better than a coin flip," and the script tells you so
+directly rather than hiding it. It saves `ml/model.pkl`.
+
+**Daily use:** once `ml/model.pkl` exists, the GitHub Actions workflow
+automatically runs `ml/predict.py` after `rank_buy.py` each day, adding
+an `MLWinProbability` column (0-100%) to `daily_top20_buy_ml_ranked.csv`
+and to the dashboard — shown right next to the original `BuyScore` so you
+can compare them. If no model exists yet, this step just skips quietly.
+
+**Re-train periodically** (e.g. monthly) using a freshly regenerated
+`backtest_trades.csv`, so the model keeps learning from recent market
+behavior instead of going stale.
 
 ## Dashboard
 
