@@ -47,6 +47,12 @@ RANKED_BUY_FILE = os.path.join(SIGNALS_DIR, "daily_top20_buy_ranked.csv")
 TRACKER_FILE = os.path.join(SIGNALS_DIR, "paper_trades.csv")
 SUMMARY_FILE = os.path.join(SIGNALS_DIR, "paper_trade_summary.txt")
 
+# A single-day move this large is more likely a bad/stale price tick,
+# thin-liquidity gap, or corporate action (split/bonus) than genuine price
+# action — flag it instead of silently trusting it. Doesn't exclude the
+# position, just marks it so you know to sanity-check before relying on it.
+ANOMALY_1DAY_MOVE_PCT = 15
+
 # How many trading bars to hold a position before force-closing it.
 # Line this up with whichever HOLDING_PERIODS value in backtest/config.py
 # you care about most.
@@ -56,6 +62,7 @@ TRACKER_COLUMNS = [
     "Symbol", "Timeframe", "EntryDate", "EntryPrice", "BuyScore",
     "Status", "LastCheckedDate", "LastPrice", "UnrealizedReturnPct",
     "ExitDate", "ExitPrice", "ReturnPct", "HoldingDays", "ExitReason",
+    "Flag",
 ]
 
 
@@ -114,6 +121,7 @@ def open_new_positions(tracker: pd.DataFrame) -> pd.DataFrame:
             "ReturnPct": "",
             "HoldingDays": 0,
             "ExitReason": "",
+            "Flag": "",
         })
 
     if new_rows:
@@ -152,10 +160,26 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         holding_days = len(bars_since_entry)
         unrealized = round(((last_price - entry_price) / entry_price) * 100, 2)
 
+        # Anomaly check: look at every individual day-over-day move since
+        # entry (not just the cumulative return) — a single suspiciously
+        # large jump is a strong sign of a bad/stale price tick, an
+        # illiquid thin-volume gap, or an unadjusted stock split/bonus,
+        # rather than genuine price action.
+        closes = pd.concat([pd.Series([entry_price]), bars_since_entry["Close"]])
+        daily_moves = closes.pct_change().dropna() * 100
+        max_daily_move = daily_moves.abs().max() if not daily_moves.empty else 0.0
+
+        flag = ""
+        if max_daily_move >= ANOMALY_1DAY_MOVE_PCT:
+            flag = (f"Flagged: {max_daily_move:+.1f}% single-day move — "
+                    f"verify price data before trusting this result")
+            print(f"  ⚠ {symbol}: {flag}")
+
         tracker.at[idx, "LastCheckedDate"] = today
         tracker.at[idx, "LastPrice"] = round(last_price, 2)
         tracker.at[idx, "UnrealizedReturnPct"] = unrealized
         tracker.at[idx, "HoldingDays"] = holding_days
+        tracker.at[idx, "Flag"] = flag
 
         if holding_days >= HOLD_TRADING_DAYS:
             tracker.at[idx, "Status"] = "CLOSED"
@@ -173,6 +197,7 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
 def build_summary(tracker: pd.DataFrame) -> str:
     closed = tracker[tracker["Status"] == "CLOSED"].copy()
     open_count = int((tracker["Status"] == "OPEN").sum())
+    flagged = tracker[tracker["Flag"].astype(str).str.len() > 0]
 
     lines = ["=" * 60, "  NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER", "=" * 60, ""]
     lines.append(f"Generated        : {datetime.now().strftime('%d-%b-%Y %H:%M')}")
@@ -180,17 +205,30 @@ def build_summary(tracker: pd.DataFrame) -> str:
     lines.append(f"Closed positions : {len(closed)}")
 
     if not closed.empty:
-        returns = pd.to_numeric(closed["ReturnPct"], errors="coerce").dropna()
+        # Exclude flagged (likely bad-data) trades from stats so a single
+        # anomalous tick doesn't distort the win rate / average return.
+        clean_closed = closed[closed["Flag"].astype(str).str.len() == 0]
+        returns = pd.to_numeric(clean_closed["ReturnPct"], errors="coerce").dropna()
         if len(returns) > 0:
             wins = int((returns > 0).sum())
             lines.append(f"Win rate         : {wins}/{len(returns)} ({(wins/len(returns)*100):.1f}%)")
             lines.append(f"Average return   : {returns.mean():+.2f}%")
             lines.append(f"Best trade       : {returns.max():+.2f}%")
             lines.append(f"Worst trade      : {returns.min():+.2f}%")
+        if len(clean_closed) < len(closed):
+            lines.append(f"(excluded {len(closed) - len(clean_closed)} flagged trade(s) from these stats — see below)")
     else:
         lines.append("")
         lines.append("No closed trades yet — check back once positions reach")
         lines.append(f"the {HOLD_TRADING_DAYS}-trading-day holding period.")
+
+    if not flagged.empty:
+        lines.append("")
+        lines.append("-" * 60)
+        lines.append(f"  {len(flagged)} POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES")
+        lines.append("-" * 60)
+        for _, r in flagged.iterrows():
+            lines.append(f"  {r['Symbol']} ({r['Timeframe']}): {r['Flag']}")
 
     lines.append("")
     lines.append("Not financial advice — forward-tracked results only reflect")

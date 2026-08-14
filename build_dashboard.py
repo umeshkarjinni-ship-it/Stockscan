@@ -42,6 +42,8 @@ DOCS_DIR = "docs"
 OUTPUT_FILE = os.path.join(DOCS_DIR, "index.html")
 
 BUY_RANKED_FILE = os.path.join(SIGNALS_DIR, "daily_top20_buy_ranked.csv")
+BUY_ML_RANKED_FILE = os.path.join(SIGNALS_DIR, "daily_top20_buy_ml_ranked.csv")
+CONFLICTS_FILE = os.path.join(SIGNALS_DIR, "conflicting_signals.csv")
 SELL_FILE = os.path.join(SIGNALS_DIR, "daily_top20_sell.csv")
 PAPER_TRADES_FILE = os.path.join(SIGNALS_DIR, "paper_trades.csv")
 PAPER_SUMMARY_FILE = os.path.join(SIGNALS_DIR, "paper_trade_summary.txt")
@@ -151,10 +153,10 @@ def build_signal_table(df, title, kind):
     if df is None:
         return f'<section class="panel"><h2>{esc(title)}</h2><p class="empty">No data yet — this file hasn\'t been generated this run.</p></section>'
 
-    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "BuyScore", "RSI", "ADX", "VolRatio"] if c in df.columns]
+    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"] if c in df.columns]
     rows_html = ""
     for _, r in df.head(20).iterrows():
-        cells = "".join(f"<td>{esc(fmt_num(r[c]) if c in ('Price','BuyScore','RSI','ADX','VolRatio') else r[c])}</td>" for c in cols)
+        cells = "".join(f"<td>{esc(fmt_num(r[c]) if c in ('Price','BuyScore','MLWinProbability','RSI','ADX','VolumeRatio') else r[c])}</td>" for c in cols)
         rows_html += f"<tr>{cells}</tr>"
 
     header_html = "".join(f"<th>{esc(c)}</th>" for c in cols)
@@ -189,11 +191,13 @@ def build_paper_table(df):
             ret = r.get("ReturnPct", "")
             ret_label = f'{fmt_num(ret, 2, "%")} <span class="badge closed">CLOSED</span>'
         cls = pct_class(ret)
+        flag = str(r.get("Flag", "") or "").strip()
+        flag_html = f' <span class="badge flag" title="{esc(flag)}">⚠ CHECK DATA</span>' if flag else ""
         rows_html += (
             f"<tr><td>{esc(r.get('Symbol',''))}</td><td>{esc(r.get('Timeframe',''))}</td>"
             f"<td>{esc(r.get('EntryDate',''))}</td><td>{fmt_num(r.get('EntryPrice',''))}</td>"
             f"<td>{esc(r.get('HoldingDays',''))}</td>"
-            f"<td class='{cls}'>{ret_label}</td></tr>"
+            f"<td class='{cls}'>{ret_label}{flag_html}</td></tr>"
         )
 
     return f'''
@@ -202,6 +206,30 @@ def build_paper_table(df):
       <div class="table-wrap">
         <table>
           <thead><tr><th>Symbol</th><th>Timeframe</th><th>Entry Date</th><th>Entry Price</th><th>Days Held</th><th>Return</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+    </section>'''
+
+
+def build_conflicts_panel(df):
+    if df is None or df.empty:
+        return ""
+
+    rows_html = ""
+    for _, r in df.iterrows():
+        rows_html += (
+            f"<tr><td>{esc(r.get('Symbol',''))}</td>"
+            f"<td class='pos'>{esc(r.get('BuyTimeframe',''))} @ {fmt_num(r.get('BuyPrice',''))}</td>"
+            f"<td class='neg'>{esc(r.get('SellTimeframe',''))} @ {fmt_num(r.get('SellPrice',''))}</td></tr>"
+        )
+
+    return f'''
+    <section class="panel conflict-panel">
+      <h2>⚠ Conflicting Signals <span class="subhead">— BUY on one timeframe, SELL on another, same day</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Symbol</th><th>BUY signal</th><th>SELL signal</th></tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
       </div>
@@ -226,10 +254,13 @@ def build_backtest_panel(text):
 def main():
     os.makedirs(DOCS_DIR, exist_ok=True)
 
-    buy_df = read_csv_safe(BUY_RANKED_FILE)
+    buy_df = read_csv_safe(BUY_ML_RANKED_FILE)
+    if buy_df is None:
+        buy_df = read_csv_safe(BUY_RANKED_FILE)
     sell_df = read_csv_safe(SELL_FILE)
     paper_df = read_csv_safe(PAPER_TRADES_FILE)
     backtest_text = read_text_safe(BACKTEST_REPORT_FILE)
+    conflicts_df = read_csv_safe(CONFLICTS_FILE)
 
     generated = datetime.now().strftime("%d %b %Y, %H:%M")
 
@@ -373,6 +404,8 @@ def main():
   }}
   .badge.open {{ background: rgba(212,162,76,0.15); color: var(--gold); }}
   .badge.closed {{ background: rgba(139,147,161,0.15); color: var(--muted); }}
+  .badge.flag {{ background: rgba(248,113,113,0.15); color: var(--neg); cursor: help; }}
+  .conflict-panel {{ border-color: rgba(248,113,113,0.35); }}
 
   .stat-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }}
   .stat {{
@@ -412,6 +445,7 @@ def main():
 </div>
 
 <main>
+{build_conflicts_panel(conflicts_df)}
 {build_signal_table(buy_df, "Today's Top BUY Signals", "buy")}
 {build_signal_table(sell_df, "Today's Top SELL Signals", "sell")}
 {build_paper_table(paper_df)}
