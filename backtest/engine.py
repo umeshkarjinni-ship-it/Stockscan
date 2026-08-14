@@ -144,13 +144,20 @@ class BacktestEngine:
         compute_signals() only sees data available up to that candle.
         """
 
-        # Determine warm-up based on timeframe
-        if self.timeframe.lower() == "monthly":
-            warmup = 36          # 3 years
-        elif self.timeframe.lower() == "weekly":
-            warmup = 60          # ~1 year
-        else:
-            warmup = 200         # Daily
+        # Warm-up: how many bars to skip before the first signal can fire.
+        #
+        # compute_signals() already enforces its own minimum internally
+        # (max of KAMA_SLOW_LEN, ATR_LEN, RSI_LEN, VOL_MA_LEN, ADX_LEN,
+        # KAMA_SLOWEST_SC, + 2) and returns an empty frame until it has
+        # enough bars — so an extra warm-up on top of that only throws
+        # away usable history.
+        #
+        # This previously used 36 for Monthly (3 full years of monthly
+        # bars) stacked on top of compute_signals()' own ~102-bar
+        # requirement, which consumed nearly all of a 10-year download
+        # and left only ~18 months of testable period. Now we let
+        # compute_signals() decide and just skip a small buffer.
+        warmup = 5
 
         if len(hist) < warmup:
             return
