@@ -171,10 +171,9 @@ class TradeSimulator:
             exit_price,
         )
 
-        cost = (
-            cfg.BROKERAGE
-            + cfg.SLIPPAGE
-        ) * 100
+        # Round-trip cost: brokerage, slippage, STT, exchange charges,
+        # GST and stamp duty across BOTH legs. See backtest/config.py.
+        cost = cfg.ROUND_TRIP_COST_PCT
 
         net = gross - cost
 
