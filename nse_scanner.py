@@ -54,8 +54,7 @@ UNIVERSE_CSV = "stocks_universe_full.csv"     # Symbol, Name, Category columns
 # point this at its output instead:
 #   UNIVERSE_CSV = "stocks_universe_full.csv"
 
-INCLUDE_OTHER_CATEGORY = False           # "Other" = micro-caps/recent listings/
-                                          # thin liquidity from build_universe.py.
+INCLUDE_OTHER_CATEGORY = False           # "Other" = micro-caps/recent listings/                                          # thin liquidity from build_universe.py.
                                           # Set True to scan them too (slower,
                                           # noisier signals due to low volume).
 
@@ -83,6 +82,15 @@ RSI_OVERBOUGHT = 78
 # Volume confirmation
 VOL_MA_LEN = 20
 VOL_MULT_REQ = 0.7
+
+# Signal staleness warning threshold (%).
+#
+# Signals are computed on COMPLETED bars only, so a Monthly signal can be
+# up to ~30 days old by the time you see it (Weekly, up to ~7). If price
+# has already moved this far from the signal-bar close, the entry you'd
+# actually get differs materially from the one the signal identified, and
+# the scan output marks StalePrice = True.
+PRICE_DRIFT_WARN_PCT = 7.0
 
 # On-Balance Volume (OBV) trend confirmation — checks that volume is
 # actually flowing IN alongside the price rise (not just spiking on isolated
@@ -932,6 +940,34 @@ def scan() -> pd.DataFrame:
                         except Exception as e:
                             print(f"  Chart generation failed for {symbol} ({tf_name}): {e}")
 
+                    # Current price vs the signal-bar price.
+                    #
+                    # resample() deliberately drops the in-progress candle,
+                    # so "Price" below is the close of the last COMPLETED
+                    # bar — for a Monthly scan run mid-month that can be up
+                    # to 30 days old. In live use that gap matters: on one
+                    # real scan, 4 of 13 Monthly picks had already moved
+                    # 10%+ since their signal bar (one +24.7%, another
+                    # -18.4%), so the "recommendation" was priced off a
+                    # thesis that had already changed.
+                    #
+                    # The signal itself is still computed from completed
+                    # bars (correct — you shouldn't act on an unfinished
+                    # candle). This just surfaces how stale it is.
+                    try:
+                        current_price = round(float(df_daily["Close"].iloc[-1]), 2)
+                        signal_price = round(float(last["Close"]), 2)
+                        price_drift = (
+                            round((current_price - signal_price) / signal_price * 100, 2)
+                            if signal_price else np.nan
+                        )
+                        stale = (
+                            bool(abs(price_drift) >= PRICE_DRIFT_WARN_PCT)
+                            if not np.isnan(price_drift) else False
+                        )
+                    except Exception:
+                        current_price, price_drift, stale = np.nan, np.nan, False
+
                     rows.append({
                         "Symbol": symbol,
                         "Name": name_map.get(symbol, ""),
@@ -939,6 +975,9 @@ def scan() -> pd.DataFrame:
                         "Timeframe": tf_name,
                         "Date": sig.index[-1].date(),
                         "Price": round(float(last["Close"]), 2),
+                        "CurrentPrice": current_price,
+                        "PriceDriftPct": price_drift,
+                        "StalePrice": stale,
                         "Volume": int(last["Volume"]),
                         "VolumeMA": float(last["VOL_MA"]) if not np.isnan(last["VOL_MA"]) else np.nan,
                         "VolumeRatio": (float(last["Volume"] / last["VOL_MA"])

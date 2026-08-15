@@ -153,13 +153,34 @@ def build_signal_table(df, title, kind):
     if df is None:
         return f'<section class="panel"><h2>{esc(title)}</h2><p class="empty">No data yet — this file hasn\'t been generated this run.</p></section>'
 
-    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"] if c in df.columns]
+    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"] if c in df.columns]
     rows_html = ""
     for _, r in df.head(20).iterrows():
-        cells = "".join(f"<td>{esc(fmt_num(r[c]) if c in ('Price','BuyScore','MLWinProbability','RSI','ADX','VolumeRatio') else r[c])}</td>" for c in cols)
+        cells = ""
+        for c in cols:
+            val = fmt_num(r[c]) if c in ('Price','CurrentPrice','PriceDriftPct','BuyScore','MLWinProbability','RSI','ADX','VolumeRatio') else r[c]
+            # Highlight signals whose price has already moved a long way
+            # from the signal bar — the entry you'd get now differs from
+            # the one the signal identified.
+            if c == "PriceDriftPct":
+                cls = pct_class(r[c])
+                stale = bool(r.get("StalePrice", False))
+                badge = ' <span class="badge flag">STALE</span>' if stale else ""
+                cells += f"<td class='{cls}'>{esc(val)}{badge}</td>"
+            else:
+                cells += f"<td>{esc(val)}</td>"
         rows_html += f"<tr>{cells}</tr>"
 
-    header_html = "".join(f"<th>{esc(c)}</th>" for c in cols)
+    # Friendlier headers — "Price" alone is ambiguous now that both the
+    # signal-bar price and the current price are shown.
+    header_labels = {
+        "Price": "Signal Price",
+        "CurrentPrice": "Current Price",
+        "PriceDriftPct": "Drift %",
+        "VolumeRatio": "Vol Ratio",
+        "MLWinProbability": "ML Win %",
+    }
+    header_html = "".join(f"<th>{esc(header_labels.get(c, c))}</th>" for c in cols)
     row_class = "buy-row" if kind == "buy" else "sell-row"
     return f'''
     <section class="panel">

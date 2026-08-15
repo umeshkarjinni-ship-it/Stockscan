@@ -54,12 +54,21 @@ SUMMARY_FILE = os.path.join(SIGNALS_DIR, "paper_trade_summary.txt")
 ANOMALY_1DAY_MOVE_PCT = 15
 
 # How many trading bars to hold a position before force-closing it.
-# Line this up with whichever HOLDING_PERIODS value in backtest/config.py
-# you care about most.
-HOLD_TRADING_DAYS = 20
+#
+# IMPORTANT: this must match backtest/config.py's MAX_HOLD_DAYS, or the
+# paper tracker measures a DIFFERENT strategy than the one the backtest
+# validated — making the two sets of results non-comparable. This was 20
+# while the backtest used 40.
+#
+# Note the units differ by design: the backtest operates on resampled
+# Weekly/Monthly bars, whereas this tracker checks DAILY bars, so 40 here
+# is 40 trading days (~2 months) rather than 40 weeks. Treat the live
+# numbers as a directional check on signal quality, not an exact replica
+# of the backtest.
+HOLD_TRADING_DAYS = 40
 
 TRACKER_COLUMNS = [
-    "Symbol", "Timeframe", "EntryDate", "EntryPrice", "BuyScore",
+    "Symbol", "Timeframe", "EntryDate", "EntryPrice", "SignalBarPrice", "BuyScore",
     "Status", "LastCheckedDate", "LastPrice", "UnrealizedReturnPct",
     "ExitDate", "ExitPrice", "ReturnPct", "HoldingDays", "ExitReason",
     "Flag",
@@ -102,30 +111,58 @@ def open_new_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         if already_open:
             continue  # don't double-enter a pick that's already being tracked
 
-        price = pd.to_numeric(r.get("Price"), errors="coerce")
-        if pd.isna(price):
+        # CRITICAL: fetch the CURRENT daily close as the entry price.
+        #
+        # The "Price" column in the ranked CSV is the close of the last
+        # COMPLETED bar of the signal's timeframe — nse_scanner.resample()
+        # deliberately drops the in-progress candle, so a Monthly scan run
+        # on 13-Aug reports the 31-JULY close. Using that as the entry
+        # price while marking to today's daily close silently measured a
+        # two-week price move and labelled it a one-day return. That made
+        # every position look like a huge gain or loss on day one
+        # (+24.66%, -18.35%) and tripped the anomaly flag on all of them.
+        #
+        # Entering at today's real price is also what actually happens if
+        # you act on a signal: you pay today's price, not last month's.
+        signal_price = pd.to_numeric(r.get("Price"), errors="coerce")
+
+        hist = fetch_single(symbol)
+        if hist is None or hist.empty:
+            print(f"  Could not fetch {symbol} — skipping this pick.")
             continue
+
+        entry_price = float(hist.sort_index()["Close"].iloc[-1])
+        if not entry_price or entry_price <= 0:
+            continue
+
+        note = ""
+        if not pd.isna(signal_price) and signal_price > 0:
+            drift = (entry_price - float(signal_price)) / float(signal_price) * 100
+            if abs(drift) >= 10:
+                note = (f"Price moved {drift:+.1f}% since the signal bar "
+                        f"({signal_price:.2f} -> {entry_price:.2f})")
 
         new_rows.append({
             "Symbol": symbol,
             "Timeframe": timeframe,
             "EntryDate": today,
-            "EntryPrice": round(float(price), 2),
+            "EntryPrice": round(entry_price, 2),
+            "SignalBarPrice": round(float(signal_price), 2) if not pd.isna(signal_price) else "",
             "BuyScore": r.get("BuyScore", ""),
             "Status": "OPEN",
             "LastCheckedDate": today,
-            "LastPrice": round(float(price), 2),
+            "LastPrice": round(entry_price, 2),
             "UnrealizedReturnPct": 0.0,
             "ExitDate": "",
             "ExitPrice": "",
             "ReturnPct": "",
             "HoldingDays": 0,
             "ExitReason": "",
-            "Flag": "",
+            "Flag": note,
         })
 
     if new_rows:
-        print(f"Opening {len(new_rows)} new paper position(s).")
+        print(f"Opening {len(new_rows)} new paper position(s) at today's prices.")
         tracker = pd.concat([tracker, pd.DataFrame(new_rows)], ignore_index=True)
     else:
         print("No new picks to open (already tracked, or today's list is empty).")
@@ -169,11 +206,17 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         daily_moves = closes.pct_change().dropna() * 100
         max_daily_move = daily_moves.abs().max() if not daily_moves.empty else 0.0
 
-        flag = ""
+        flag = str(tracker.at[idx, "Flag"] or "").strip()
+        # Preserve any note recorded at entry (e.g. large drift between
+        # the signal bar and the actual entry price) rather than
+        # overwriting it, but don't stack duplicate anomaly warnings.
+        flag = "" if flag.startswith("Flagged:") else flag
+
         if max_daily_move >= ANOMALY_1DAY_MOVE_PCT:
-            flag = (f"Flagged: {max_daily_move:+.1f}% single-day move — "
-                    f"verify price data before trusting this result")
-            print(f"  ⚠ {symbol}: {flag}")
+            anomaly = (f"Flagged: {max_daily_move:+.1f}% single-day move — "
+                       f"verify price data before trusting this result")
+            flag = f"{flag} | {anomaly}" if flag else anomaly
+            print(f"  ⚠ {symbol}: {anomaly}")
 
         tracker.at[idx, "LastCheckedDate"] = today
         tracker.at[idx, "LastPrice"] = round(last_price, 2)
