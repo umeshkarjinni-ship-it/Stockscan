@@ -2,12 +2,18 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 14-Aug-2026 11:09
+Generated        : 15-Aug-2026 14:24
 Open positions   : 13
 Closed positions : 0
 
 No closed trades yet — check back once positions reach
 the 20-trading-day holding period.
+
+------------------------------------------------------------
+  2 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
+------------------------------------------------------------
+  CNL (Monthly): Flagged: +24.7% single-day move — verify price data before trusting this result
+  GREAVESCOT (Monthly): Flagged: +18.3% single-day move — verify price data before trusting this result
 
 Not financial advice — forward-tracked results only reflect
 this specific rule set and holding period, not any trade you
