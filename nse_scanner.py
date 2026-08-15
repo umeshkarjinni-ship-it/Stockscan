@@ -30,6 +30,7 @@ OUTPUT
 """
 
 import os
+import json
 import time
 import smtplib
 from email.mime.text import MIMEText
@@ -54,7 +55,7 @@ UNIVERSE_CSV = "stocks_universe_full.csv"     # Symbol, Name, Category columns
 # point this at its output instead:
 #   UNIVERSE_CSV = "stocks_universe_full.csv"
 
-INCLUDE_OTHER_CATEGORY = True             # "Other" = micro-caps/recent listings/
+INCLUDE_OTHER_CATEGORY = False             # "Other" = micro-caps/recent listings/
                                           # thin liquidity from build_universe.py.
                                           # Set False to scan only the ~500
                                           # Large/Mid/Small cap names.
@@ -1145,6 +1146,25 @@ def scan() -> pd.DataFrame:
         print(f"  (also saved to {OUTPUT_DIR}/failed_symbols.csv)")
 
     print_buy_diagnostics(diagnostics)
+
+    # Persist the market regime so downstream tools (notably the
+    # dashboard) can explain WHY a timeframe produced no BUY signals.
+    #
+    # When NIFTY's Weekly VStop is DOWN, every Weekly BUY is deliberately
+    # blocked by the regime filter. Without this, a dashboard showing 13
+    # Monthly BUYs and zero Weekly ones looks like a broken scanner
+    # rather than a filter working exactly as intended.
+    try:
+        regime = diagnostics.get("_market_regime", {})
+        with open(os.path.join(OUTPUT_DIR, "market_regime.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "Weekly": "UP" if regime.get("Weekly") else "DOWN",
+                "Monthly": "UP" if regime.get("Monthly") else "DOWN",
+                "weekly_buys_blocked": (not regime.get("Weekly")) and USE_MARKET_REGIME_FILTER,
+                "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            }, f, indent=2)
+    except Exception as e:
+        print(f"  (could not save market_regime.json: {e})")
 
     return pd.DataFrame(rows), charts
 

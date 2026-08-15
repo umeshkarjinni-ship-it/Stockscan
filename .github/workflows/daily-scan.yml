@@ -69,6 +69,7 @@ jobs:
           for f in signals/paper_trades.csv \
                    signals/paper_trade_summary.txt \
                    signals/conflicting_signals.csv \
+                   signals/market_regime.json \
                    docs/index.html; do
             [ -f "$f" ] && git add "$f" || echo "skip $f"
           done
@@ -91,6 +92,7 @@ jobs:
             signals/daily_top20_buy_ranked.csv
             signals/daily_top20_buy_ml_ranked.csv
             signals/conflicting_signals.csv
+            signals/market_regime.json
             signals/paper_trades.csv
             signals/paper_trade_summary.txt
           retention-days: 30

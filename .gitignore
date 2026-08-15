@@ -17,6 +17,9 @@ signals/*
 # conflicting BUY/SELL signals. Without this, `git add` fails on an
 # ignored path and the whole commit step exits 1.
 !signals/conflicting_signals.csv
+# Exception: read by build_dashboard.py to explain why a timeframe
+# produced no BUY signals (regime filter suppression).
+!signals/market_regime.json
 reports/*
 !reports/.gitkeep
 cache/*

@@ -33,6 +33,7 @@ VIEWING IT
 """
 
 import os
+import json
 from datetime import datetime
 
 import pandas as pd
@@ -44,6 +45,7 @@ OUTPUT_FILE = os.path.join(DOCS_DIR, "index.html")
 BUY_RANKED_FILE = os.path.join(SIGNALS_DIR, "daily_top20_buy_ranked.csv")
 BUY_ML_RANKED_FILE = os.path.join(SIGNALS_DIR, "daily_top20_buy_ml_ranked.csv")
 CONFLICTS_FILE = os.path.join(SIGNALS_DIR, "conflicting_signals.csv")
+REGIME_FILE = os.path.join(SIGNALS_DIR, "market_regime.json")
 SELL_FILE = os.path.join(SIGNALS_DIR, "daily_top20_sell.csv")
 PAPER_TRADES_FILE = os.path.join(SIGNALS_DIR, "paper_trades.csv")
 PAPER_SUMMARY_FILE = os.path.join(SIGNALS_DIR, "paper_trade_summary.txt")
@@ -213,7 +215,19 @@ def build_paper_table(df):
             ret_label = f'{fmt_num(ret, 2, "%")} <span class="badge closed">CLOSED</span>'
         cls = pct_class(ret)
         flag = str(r.get("Flag", "") or "").strip()
-        flag_html = f' <span class="badge flag" title="{esc(flag)}">⚠ CHECK DATA</span>' if flag else ""
+        # Distinguish two different kinds of note stored in Flag:
+        #   "Flagged: ..."  -> a genuine data-quality anomaly (implausible
+        #                      single-day move) that warrants CHECK DATA
+        #   anything else   -> informational, e.g. how far price drifted
+        #                      between the signal bar and actual entry
+        # Badging both identically made CHECK DATA fire on every position,
+        # which trains you to ignore it.
+        if flag.startswith("Flagged:") or "| Flagged:" in flag:
+            flag_html = f' <span class="badge flag" title="{esc(flag)}">⚠ CHECK DATA</span>'
+        elif flag:
+            flag_html = f' <span class="badge note" title="{esc(flag)}">DRIFT</span>'
+        else:
+            flag_html = ""
         rows_html += (
             f"<tr><td>{esc(r.get('Symbol',''))}</td><td>{esc(r.get('Timeframe',''))}</td>"
             f"<td>{esc(r.get('EntryDate',''))}</td><td>{fmt_num(r.get('EntryPrice',''))}</td>"
@@ -233,7 +247,42 @@ def build_paper_table(df):
     </section>'''
 
 
+def build_regime_banner(regime):
+    """
+    Explains why a timeframe may be producing no BUY signals.
+
+    When NIFTY's Weekly trend is DOWN the scanner deliberately blocks all
+    Weekly BUYs. Without saying so, a dashboard full of Monthly signals
+    and no Weekly ones reads like a malfunction.
+    """
+    if not regime:
+        return ""
+
+    wk = regime.get("Weekly", "?")
+    mo = regime.get("Monthly", "?")
+    blocked = bool(regime.get("weekly_buys_blocked"))
+
+    def pill(label, state):
+        cls = "pos" if state == "UP" else "neg" if state == "DOWN" else ""
+        return f'<span class="regime-pill">{esc(label)} <b class="{cls}">{esc(state)}</b></span>'
+
+    note = ""
+    if blocked:
+        note = ('<div class="regime-note">Weekly BUY signals are currently '
+                'suppressed by the market-regime filter — this is intentional, '
+                'not a missing-data problem.</div>')
+
+    return f'''
+    <section class="panel regime-panel">
+      <h2>Market Regime <span class="subhead">— NIFTY 50 trend</span></h2>
+      <div class="regime-row">{pill("Weekly", wk)}{pill("Monthly", mo)}</div>
+      {note}
+    </section>'''
+
+
 def build_conflicts_panel(df):
+
+
     if df is None or df.empty:
         return ""
 
@@ -282,6 +331,14 @@ def main():
     paper_df = read_csv_safe(PAPER_TRADES_FILE)
     backtest_text = read_text_safe(BACKTEST_REPORT_FILE)
     conflicts_df = read_csv_safe(CONFLICTS_FILE)
+
+    regime = None
+    if os.path.exists(REGIME_FILE):
+        try:
+            with open(REGIME_FILE, encoding='utf-8') as f:
+                regime = json.load(f)
+        except Exception:
+            regime = None
 
     generated = datetime.now().strftime("%d %b %Y, %H:%M")
 
@@ -426,6 +483,13 @@ def main():
   .badge.open {{ background: rgba(212,162,76,0.15); color: var(--gold); }}
   .badge.closed {{ background: rgba(139,147,161,0.15); color: var(--muted); }}
   .badge.flag {{ background: rgba(248,113,113,0.15); color: var(--neg); cursor: help; }}
+  .regime-panel {{ border-color: rgba(212,162,76,0.3); }}
+  .regime-row {{ display:flex; gap:16px; flex-wrap:wrap; }}
+  .regime-pill {{ background:#10151D; border:1px solid var(--border); border-radius:4px;
+                 padding:8px 14px; font-family:'IBM Plex Mono',monospace; font-size:13px;
+                 color:var(--muted); }}
+  .regime-note {{ margin-top:12px; color:var(--gold); font-size:13px; }}
+  .badge.note {{ background: rgba(139,147,161,0.15); color: var(--muted); cursor: help; }}
   .conflict-panel {{ border-color: rgba(248,113,113,0.35); }}
 
   .stat-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }}
@@ -466,6 +530,7 @@ def main():
 </div>
 
 <main>
+{build_regime_banner(regime)}
 {build_conflicts_panel(conflicts_df)}
 {build_signal_table(buy_df, "Today's Top BUY Signals", "buy")}
 {build_signal_table(sell_df, "Today's Top SELL Signals", "sell")}

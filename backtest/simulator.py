@@ -137,7 +137,30 @@ class TradeSimulator:
             len(signals),
         )
 
+        # Progress logging. This loop downloads price history for every
+        # unique symbol (cached, so once each) and can run 20-40 minutes
+        # on a full universe. Without output it looks indistinguishable
+        # from a hung job.
+        total_signals = len(signals)
+        unique_symbols = signals["symbol"].nunique() if "symbol" in signals.columns else 0
+        logger.info(
+            "Simulating %d signals across %d unique symbols "
+            "(history downloaded once per symbol)",
+            total_signals, unique_symbols,
+        )
+        progress_every = max(1, total_signals // 20)
+        processed = 0
+
         for _, signal in signals.iterrows():
+
+            processed += 1
+            if processed % progress_every == 0 or processed == total_signals:
+                logger.info(
+                    "  [%d/%d] %.0f%% — %d trades so far, %d symbols cached",
+                    processed, total_signals,
+                    processed / total_signals * 100,
+                    len(self.trades), len(self._signal_cache),
+                )
 
             try:
 
