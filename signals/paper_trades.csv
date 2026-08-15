@@ -1,0 +1,6 @@
+Symbol,Timeframe,EntryDate,EntryPrice,SignalBarPrice,BuyScore,Status,LastCheckedDate,LastPrice,UnrealizedReturnPct,ExitDate,ExitPrice,ReturnPct,HoldingDays,ExitReason,Flag
+GABRIEL,Monthly,2026-08-15,1459.0,1389.13,93.0,OPEN,2026-08-15,1459.0,0.0,,,,0,,
+EXIDEIND,Monthly,2026-08-15,476.1,452.7,84.0,OPEN,2026-08-15,476.1,0.0,,,,0,,
+LALPATHLAB,Monthly,2026-08-15,1916.3,1878.8,82.0,OPEN,2026-08-15,1916.3,0.0,,,,0,,
+BOSCHLTD,Monthly,2026-08-15,47100.0,41278.36,80.0,OPEN,2026-08-15,47100.0,0.0,,,,0,,Price moved +14.1% since the signal bar (41278.36 -> 47100.00)
+GODREJIND,Monthly,2026-08-15,1252.5,1309.4,72.0,OPEN,2026-08-15,1252.5,0.0,,,,0,,
