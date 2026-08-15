@@ -54,9 +54,46 @@ UNIVERSE_CSV = "stocks_universe_full.csv"     # Symbol, Name, Category columns
 # point this at its output instead:
 #   UNIVERSE_CSV = "stocks_universe_full.csv"
 
-INCLUDE_OTHER_CATEGORY = False           # "Other" = micro-caps/recent listings/                                          # thin liquidity from build_universe.py.
-                                          # Set True to scan them too (slower,
-                                          # noisier signals due to low volume).
+INCLUDE_OTHER_CATEGORY = True             # "Other" = micro-caps/recent listings/
+                                          # thin liquidity from build_universe.py.
+                                          # Set False to scan only the ~500
+                                          # Large/Mid/Small cap names.
+                                          #
+                                          # With True the universe goes from
+                                          # ~500 to ~2,075. That extra tier is
+                                          # where corrupt price data and
+                                          # untradeable illiquidity live: an
+                                          # early full-universe backtest gave
+                                          # PF 0.94 vs 1.92 on the clean 500,
+                                          # including a "-86% trade" that was
+                                          # really an unadjusted 7.35x split.
+                                          #
+                                          # The filters below exist to make this
+                                          # setting survivable. Don't disable
+                                          # them while this is True.
+
+# ---------------------------------------------------------------------
+# Liquidity floor
+# ---------------------------------------------------------------------
+#
+# Applied to every symbol regardless of category. Screens out names you
+# couldn't actually trade at size, and where a single small order moves
+# price enough to make technical signals meaningless.
+# Set MIN_AVG_TURNOVER to 0 to disable.
+
+MIN_PRICE = 10.0                  # rupees; sub-10 names are tick-dominated
+MIN_AVG_TURNOVER = 10_000_000     # rupees/day (~1 crore), 20-day average
+
+# ---------------------------------------------------------------------
+# Split / bad-tick guard
+# ---------------------------------------------------------------------
+#
+# yfinance sometimes serves unadjusted history across a corporate action,
+# producing an overnight move no real stock made. Any symbol showing a
+# single daily move beyond this is skipped with a warning rather than
+# silently generating signals from broken data.
+
+MAX_PLAUSIBLE_DAILY_MOVE_PCT = 35.0
 
 OUTPUT_DIR = "signals"
 
@@ -848,6 +885,44 @@ def scan() -> pd.DataFrame:
             try:
                 df_daily = df_daily[["Open", "High", "Low", "Close", "Volume"]].dropna()
                 if df_daily.empty:
+                    continue
+
+                # ----------------------------------------------------------
+                # Data-quality and liquidity gates
+                # ----------------------------------------------------------
+                # These matter most when INCLUDE_OTHER_CATEGORY is True and
+                # the universe expands to ~2,075 names, but they're applied
+                # universally so behaviour is consistent either way.
+
+                last_close = float(df_daily["Close"].iloc[-1])
+
+                if last_close < MIN_PRICE:
+                    failures.append((symbol, f"Below MIN_PRICE ({last_close:.2f} < {MIN_PRICE})"))
+                    continue
+
+                if MIN_AVG_TURNOVER > 0:
+                    recent = df_daily.tail(20)
+                    avg_turnover = float((recent["Close"] * recent["Volume"]).mean())
+                    if avg_turnover < MIN_AVG_TURNOVER:
+                        failures.append((
+                            symbol,
+                            f"Illiquid: avg turnover Rs {avg_turnover:,.0f}/day "
+                            f"< Rs {MIN_AVG_TURNOVER:,.0f}"
+                        ))
+                        continue
+
+                # Unadjusted-split / bad-tick detection. A genuine NSE
+                # equity does not move 35%+ in one session outside of a
+                # corporate action the data feed failed to adjust for.
+                daily_moves = df_daily["Close"].pct_change().abs() * 100
+                worst_move = float(daily_moves.max()) if len(daily_moves) else 0.0
+                if worst_move >= MAX_PLAUSIBLE_DAILY_MOVE_PCT:
+                    when = daily_moves.idxmax()
+                    failures.append((
+                        symbol,
+                        f"Suspect price data: {worst_move:.1f}% single-day move on "
+                        f"{pd.Timestamp(when).date()} — likely an unadjusted split/bonus"
+                    ))
                     continue
 
                 # Earnings avoidance check — one call per stock (not per
