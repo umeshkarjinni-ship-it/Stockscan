@@ -130,8 +130,18 @@ USE_EARNINGS_AVOIDANCE = False
 EARNINGS_AVOID_DAYS = 5           # skip BUY if earnings due within N days
 
 # Data
-HISTORY_PERIOD = "10y"            # yfinance period to download (need enough
-                                   # daily bars to build stable monthly EMA100)
+HISTORY_PERIOD = "max"            # yfinance period to download.
+                                  #
+                                  # MUST be long enough for the MONTHLY
+                                  # timeframe: compute_signals() needs
+                                  # KAMA_SLOW_LEN + 2 = 102 bars before it
+                                  # returns anything, and 102 MONTHLY bars
+                                  # is 8.5 years. With the old "10y" setting
+                                  # that left only ~18 usable monthly bars,
+                                  # so monthly backtests covered barely a
+                                  # year regardless of warm-up settings.
+                                  # "max" pulls each stock's full listed
+                                  # history instead.
 BATCH_SIZE = 40                   # tickers per yfinance batch download
 BATCH_SLEEP_SEC = 3               # pause between batches (avoid rate limits)
 EXCHANGE_SUFFIX = ".NS"           # ".NS" = NSE, ".BO" = BSE
@@ -360,7 +370,20 @@ def compute_signals(df: pd.DataFrame, nifty_close: pd.Series = None) -> pd.DataF
     obv_ok = (out["OBV"] > out["OBV_MA"]) if USE_OBV_FILTER else pd.Series(True, index=out.index)
 
     if USE_RELATIVE_STRENGTH_FILTER and nifty_close is not None and not nifty_close.empty:
-        nifty_aligned = nifty_close.reindex(out.index).ffill()
+        # Align the daily NIFTY series onto this timeframe's bar dates.
+        #
+        # IMPORTANT: reindex(...).ffill() alone is NOT sufficient. Weekly
+        # resampling produces Sunday-stamped bars, but NIFTY only has
+        # weekday data, so a direct reindex matches ZERO dates and yields
+        # all-NaN — which made rs_ok False on every bar and silently
+        # prevented ANY weekly BUY signal from ever firing.
+        #
+        # Reindexing onto the union of both date sets first, forward-
+        # filling there, and only then selecting this timeframe's dates
+        # means each bar picks up the most recent prior trading day's
+        # close, which is what the comparison actually intends.
+        combined_index = nifty_close.index.union(out.index)
+        nifty_aligned = nifty_close.reindex(combined_index).ffill().reindex(out.index)
         rs_line = out["Close"] / nifty_aligned.replace(0, np.nan)
         rs_ma = rs_line.rolling(RS_MA_LEN).mean()
         rs_ok = rs_line > rs_ma
