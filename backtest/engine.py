@@ -61,6 +61,23 @@ class SignalEvent:
 
     relative_strength: float
 
+    # --- Additional features for ML training ---
+    #
+    # The four above are all GATING conditions: a signal only fires when
+    # each is already inside its required band, so by the time a trade
+    # exists they carry almost no variance and no predictive information
+    # (a model trained on them alone scored ROC-AUC 0.494 — worse than a
+    # coin flip). The features below are NOT part of the entry rules, so
+    # they retain real spread across trades and may actually discriminate.
+
+    pct_from_52w_high: float = 0.0   # how extended vs the 1-year high
+
+    atr_pct: float = 0.0             # ATR / Close = volatility regime
+
+    dist_from_kama_pct: float = 0.0  # how far above the mid trend line
+
+    nifty_regime_up: int = 0         # 1 if NIFTY above its own 50-bar MA
+
 
 # ---------------------------------------------------------
 # BACKTEST ENGINE
@@ -203,6 +220,7 @@ class BacktestEngine:
                     symbol=symbol,
                     timeframe=self.timeframe,
                     row=last,
+                    window=signals,
                 )
 
                 if event is not None:
@@ -270,6 +288,7 @@ class BacktestEngine:
         symbol,
         timeframe,
         row,
+        window=None,
     ) -> Optional[SignalEvent]:
 
         try:
@@ -346,6 +365,57 @@ class BacktestEngine:
                 ],
             )
 
+            # ----------------------------
+            # Non-gated ML features
+            # ----------------------------
+            #
+            # Computed from the signal-time window only — never from
+            # future bars — so there is no look-ahead leakage.
+
+            pct_from_52w_high = 0.0
+            atr_pct = 0.0
+            dist_from_kama_pct = 0.0
+            nifty_regime_up = 0
+
+            try:
+                if window is not None and len(window) > 0 and price:
+                    # 52-week high: 52 weekly bars or 12 monthly bars
+                    lookback = 52 if timeframe.lower() == "weekly" else 12
+                    recent = window["Close"].iloc[-lookback:]
+                    high_52w = float(recent.max())
+                    if high_52w > 0:
+                        pct_from_52w_high = round(
+                            (price - high_52w) / high_52w * 100, 3
+                        )
+
+                atr_val = self._get_value(
+                    row,
+                    # compute_signals() exposes the ATR series as
+                    # "ATR_STOP" (the volatility-stop distance), not "ATR"
+                    # — checking only "ATR" silently returned 0 for every
+                    # trade and made this feature useless.
+                    ["ATR_STOP", "ATR", "atr"],
+                    default=0.0,
+                )
+                if price and atr_val:
+                    atr_pct = round(atr_val / price * 100, 3)
+
+                kama_mid = self._get_value(row, ["KAMA_MID"], default=0.0)
+                if price and kama_mid:
+                    dist_from_kama_pct = round(
+                        (price - kama_mid) / kama_mid * 100, 3
+                    )
+
+                if self.nifty_close is not None and len(self.nifty_close) >= 50:
+                    upto = self.nifty_close.loc[:row.name]
+                    if len(upto) >= 50:
+                        nifty_regime_up = int(
+                            float(upto.iloc[-1]) > float(upto.iloc[-50:].mean())
+                        )
+            except Exception:
+                # Feature extraction must never break signal recording.
+                pass
+
             return SignalEvent(
 
                 symbol=symbol,
@@ -365,6 +435,14 @@ class BacktestEngine:
                 volume_ratio=volume_ratio,
 
                 relative_strength=rs,
+
+                pct_from_52w_high=pct_from_52w_high,
+
+                atr_pct=atr_pct,
+
+                dist_from_kama_pct=dist_from_kama_pct,
+
+                nifty_regime_up=nifty_regime_up,
 
             )
 

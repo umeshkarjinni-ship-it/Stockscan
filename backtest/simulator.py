@@ -63,7 +63,14 @@ class Trade:
     volume_ratio: float
 
     relative_strength: float
-    exit_reason: str
+
+    # Non-gated features carried through from SignalEvent for ML training.
+    pct_from_52w_high: float = 0.0
+    atr_pct: float = 0.0
+    dist_from_kama_pct: float = 0.0
+    nifty_regime_up: int = 0
+
+    exit_reason: str = ""
 
 
 # ----------------------------------------------------------------------
@@ -202,6 +209,14 @@ class TradeSimulator:
             volume_ratio=float(signal["volume_ratio"]),
 
             relative_strength=float(signal["relative_strength"]),
+
+            pct_from_52w_high=float(signal.get("pct_from_52w_high", 0.0) or 0.0),
+
+            atr_pct=float(signal.get("atr_pct", 0.0) or 0.0),
+
+            dist_from_kama_pct=float(signal.get("dist_from_kama_pct", 0.0) or 0.0),
+
+            nifty_regime_up=int(signal.get("nifty_regime_up", 0) or 0),
 
             exit_reason=exit_result.reason,
 

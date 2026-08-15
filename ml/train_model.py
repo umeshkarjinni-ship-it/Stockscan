@@ -52,7 +52,28 @@ from sklearn.metrics import (
 TRADES_FILE = os.path.join("signals", "backtest_trades.csv")
 MODEL_FILE = os.path.join("ml", "model.pkl")
 
-FEATURES = ["rsi", "adx", "volume_ratio", "relative_strength", "buy_score"]
+# "buy_score" is deliberately EXCLUDED: the strategy only emits a signal
+# when all 7 rule checks pass, so it is 100.0 on every trade — zero
+# variance, zero information.
+#
+# rsi / adx / volume_ratio / relative_strength are all GATING conditions
+# too. A first attempt using only those scored ROC-AUC 0.494 (worse than
+# a coin flip), because entry rules had already squeezed them into narrow
+# bands. They're kept here since they still carry some within-band
+# variation, but the features that actually differ meaningfully between
+# trades are the non-gated ones below.
+FEATURES = [
+    "rsi",
+    "adx",
+    "volume_ratio",
+    "relative_strength",
+    "timeframe_weekly",
+    # Non-gated — not part of the entry rules, so real spread survives:
+    "pct_from_52w_high",
+    "atr_pct",
+    "dist_from_kama_pct",
+    "nifty_regime_up",
+]
 TARGET = "net_return"
 
 MIN_TRADES_RECOMMENDED = 300
@@ -67,6 +88,29 @@ def load_training_data() -> pd.DataFrame:
         )
 
     df = pd.read_csv(TRADES_FILE)
+
+    # Encode timeframe as a numeric feature so the model can learn that
+    # Weekly and Monthly signals have different characteristics.
+    if "timeframe" in df.columns:
+        df["timeframe_weekly"] = (
+            df["timeframe"].astype(str).str.strip().str.lower() == "weekly"
+        ).astype(int)
+    else:
+        df["timeframe_weekly"] = 0
+
+    # Tolerate older backtest_trades.csv files that predate the non-gated
+    # features — fill them with 0 and warn rather than crashing.
+    missing_cols = [c for c in FEATURES if c not in df.columns]
+    if missing_cols:
+        print(
+            f"WARNING: {TRADES_FILE} is missing {missing_cols}.\n"
+            "  These come from the newer backtest engine. Re-run the backtest\n"
+            "  to generate them — training without them will likely reproduce\n"
+            "  the near-random result the gated features alone produced.\n"
+        )
+        for c in missing_cols:
+            df[c] = 0
+
     df = df.dropna(subset=FEATURES + [TARGET])
 
     if len(df) < MIN_TRADES_RECOMMENDED:

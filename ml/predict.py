@@ -71,6 +71,31 @@ def main():
     df["volume_ratio"] = pd.to_numeric(df.get("VolumeRatio"), errors="coerce")
     df["relative_strength"] = pd.to_numeric(df.get("RS_LINE"), errors="coerce")
     df["buy_score"] = df.apply(compute_live_buy_score, axis=1)
+    df["timeframe_weekly"] = (
+        df.get("Timeframe", pd.Series("", index=df.index))
+        .astype(str).str.strip().str.lower() == "weekly"
+    ).astype(int)
+
+    # The non-gated features (pct_from_52w_high, atr_pct, etc.) are
+    # computed by backtest/engine.py at signal time and are NOT currently
+    # written to the live scan CSV. Rather than silently scoring every
+    # stock on zeros — which would produce confident-looking but
+    # meaningless probabilities — bail out and say so.
+    unavailable = [
+        f for f in features
+        if f not in df.columns and f not in
+        ("rsi", "adx", "volume_ratio", "relative_strength",
+         "buy_score", "timeframe_weekly")
+    ]
+    if unavailable:
+        print(
+            "Cannot score today's candidates: the trained model expects "
+            f"{unavailable}, which the live scan does not yet produce.\n"
+            "  These features currently exist only in the backtest engine. "
+            "Scoring on placeholder zeros would give misleading results, so "
+            "this step is being skipped."
+        )
+        return
 
     missing = df[features].isna().any(axis=1)
     if missing.any():
