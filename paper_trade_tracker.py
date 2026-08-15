@@ -75,6 +75,21 @@ TRACKER_COLUMNS = [
 ]
 
 
+def clean_flag(value) -> str:
+    """
+    Normalise the Flag column to a plain string.
+
+    pandas reads empty CSV cells as NaN, and str(NaN) == "nan" — a
+    non-empty, length-3 string. Left unhandled that made every unflagged
+    position look flagged: the summary counted them all as anomalies and
+    excluded them from the win-rate stats.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in ("nan", "none") else text
+
+
 def load_tracker() -> pd.DataFrame:
     if os.path.exists(TRACKER_FILE):
         df = pd.read_csv(TRACKER_FILE)
@@ -206,7 +221,7 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         daily_moves = closes.pct_change().dropna() * 100
         max_daily_move = daily_moves.abs().max() if not daily_moves.empty else 0.0
 
-        flag = str(tracker.at[idx, "Flag"] or "").strip()
+        flag = clean_flag(tracker.at[idx, "Flag"])
         # Preserve any note recorded at entry (e.g. large drift between
         # the signal bar and the actual entry price) rather than
         # overwriting it, but don't stack duplicate anomaly warnings.
@@ -240,7 +255,7 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
 def build_summary(tracker: pd.DataFrame) -> str:
     closed = tracker[tracker["Status"] == "CLOSED"].copy()
     open_count = int((tracker["Status"] == "OPEN").sum())
-    flagged = tracker[tracker["Flag"].astype(str).str.len() > 0]
+    flagged = tracker[tracker["Flag"].map(clean_flag).str.len() > 0]
 
     lines = ["=" * 60, "  NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER", "=" * 60, ""]
     lines.append(f"Generated        : {datetime.now().strftime('%d-%b-%Y %H:%M')}")
@@ -250,7 +265,7 @@ def build_summary(tracker: pd.DataFrame) -> str:
     if not closed.empty:
         # Exclude flagged (likely bad-data) trades from stats so a single
         # anomalous tick doesn't distort the win rate / average return.
-        clean_closed = closed[closed["Flag"].astype(str).str.len() == 0]
+        clean_closed = closed[closed["Flag"].map(clean_flag).str.len() == 0]
         returns = pd.to_numeric(clean_closed["ReturnPct"], errors="coerce").dropna()
         if len(returns) > 0:
             wins = int((returns > 0).sum())

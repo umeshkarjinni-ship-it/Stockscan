@@ -215,6 +215,11 @@ def build_paper_table(df):
             ret_label = f'{fmt_num(ret, 2, "%")} <span class="badge closed">CLOSED</span>'
         cls = pct_class(ret)
         flag = str(r.get("Flag", "") or "").strip()
+        # pandas turns empty CSV cells into NaN, and str(NaN) == "nan" —
+        # a non-empty string that would otherwise badge every position
+        # with a meaningless DRIFT note.
+        if flag.lower() in ("nan", "none"):
+            flag = ""
         # Distinguish two different kinds of note stored in Flag:
         #   "Flagged: ..."  -> a genuine data-quality anomaly (implausible
         #                      single-day move) that warrants CHECK DATA
