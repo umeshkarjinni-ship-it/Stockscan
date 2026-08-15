@@ -92,8 +92,14 @@ MIN_AVG_TURNOVER = 10_000_000     # rupees/day (~1 crore), 20-day average
 # producing an overnight move no real stock made. Any symbol showing a
 # single daily move beyond this is skipped with a warning rather than
 # silently generating signals from broken data.
-
-MAX_PLAUSIBLE_DAILY_MOVE_PCT = 35.0
+#
+# CALIBRATED against a real 2,075-symbol run: at 35% this caught 74
+# symbols, but among them were ADANIENT and CANBK — both at exactly 38.7%,
+# from a genuine 2015 demerger and a 2017 bonus issue in liquid large caps.
+# Only 15 of the 74 catches sat in the 35-45% band while 45 exceeded 60%
+# (median 66%, max 4,350%), so 50% keeps essentially all the genuinely
+# corrupt data while no longer discarding real large caps.
+MAX_PLAUSIBLE_DAILY_MOVE_PCT = 50.0
 
 OUTPUT_DIR = "signals"
 
