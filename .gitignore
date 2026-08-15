@@ -13,6 +13,10 @@ signals/*
 # Exception: the paper trade tracker must persist across runs to be useful
 !signals/paper_trades.csv
 !signals/paper_trade_summary.txt
+# Exception: committed by the daily workflow so the dashboard can show
+# conflicting BUY/SELL signals. Without this, `git add` fails on an
+# ignored path and the whole commit step exits 1.
+!signals/conflicting_signals.csv
 reports/*
 !reports/.gitkeep
 cache/*

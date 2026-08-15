@@ -90,6 +90,13 @@ STRATEGIES = [
 
     # --- Hold-length comparison, pure time exit so the only variable
     #     is duration. Directly answers "is 40 bars the right number?" ---
+    #
+    # MEASURED (1,430 signals): profit factor rose monotonically with
+    # hold length — 5 bars 0.85, 10 bars 1.04, 20 bars 1.31, 40 bars
+    # 1.92, 60 bars 2.42 — and return-per-bar peaked at 60 too. That
+    # clean staircase is unlikely to be noise. But 60 was just the
+    # longest value tested, so the sweep is extended below to find where
+    # the improvement actually plateaus or reverses.
     ("time_only_5bar", dict(
         max_hold_days=5, use_vstop_exit=False, use_atr_stop=False,
         use_trailing_stop=False, use_profit_target=False)),
@@ -106,10 +113,30 @@ STRATEGIES = [
         max_hold_days=60, use_vstop_exit=False, use_atr_stop=False,
         use_trailing_stop=False, use_profit_target=False)),
 
+    ("time_only_80bar", dict(
+        max_hold_days=80, use_vstop_exit=False, use_atr_stop=False,
+        use_trailing_stop=False, use_profit_target=False)),
+
+    ("time_only_100bar", dict(
+        max_hold_days=100, use_vstop_exit=False, use_atr_stop=False,
+        use_trailing_stop=False, use_profit_target=False)),
+
+    ("time_only_130bar", dict(
+        max_hold_days=130, use_vstop_exit=False, use_atr_stop=False,
+        use_trailing_stop=False, use_profit_target=False)),
+
+    ("time_only_200bar", dict(
+        max_hold_days=200, use_vstop_exit=False, use_atr_stop=False,
+        use_trailing_stop=False, use_profit_target=False)),
+
     # --- Best-guess combination: let the trend decide the exit, with a
     #     long backstop rather than a short arbitrary cutoff ---
     ("vstop_flip_60bar", dict(
         max_hold_days=60, use_vstop_exit=True, use_atr_stop=False,
+        use_trailing_stop=False, use_profit_target=False)),
+
+    ("vstop_flip_130bar", dict(
+        max_hold_days=130, use_vstop_exit=True, use_atr_stop=False,
         use_trailing_stop=False, use_profit_target=False)),
 ]
 
@@ -173,7 +200,7 @@ def simulate(signals_df, cache, engine):
     return pd.DataFrame(trades)
 
 
-def summarize(df, label):
+def summarize(df, label, max_hold=None):
     if df.empty:
         return {"strategy": label, "trades": 0}
 
@@ -181,6 +208,16 @@ def summarize(df, label):
     losses = df[df.net_return <= 0]
     gross_win = wins.net_return.sum()
     gross_loss = abs(losses.net_return.sum())
+
+    # How many trades ended early only because history ran out, rather
+    # than because a rule fired. This matters most for LONG holds: if a
+    # 200-bar strategy has half its trades truncated, its numbers reflect
+    # a much shorter hold than the label claims.
+    truncated = None
+    if max_hold:
+        truncated = int(
+            ((df.exit_reason == "TIME_EXIT") & (df.holding_days < max_hold)).sum()
+        )
 
     return {
         "strategy": label,
@@ -199,6 +236,7 @@ def summarize(df, label):
         "return_per_bar": round(
             df.net_return.mean() / df.holding_days.mean(), 4
         ) if df.holding_days.mean() else None,
+        "truncated": truncated,
         "total_return": round(df.net_return.sum(), 1),
         "worst_trade": round(df.net_return.min(), 2),
     }
@@ -226,7 +264,7 @@ def main():
         engine = ExitEngine(**kwargs)
         trades = simulate(signals_df, cache, engine)
         trades.to_csv(os.path.join(SIGNALS_DIR, f"exit_trades_{label}.csv"), index=False)
-        row = summarize(trades, label)
+        row = summarize(trades, label, max_hold=kwargs.get("max_hold_days", cfg.MAX_HOLD_DAYS))
         rows.append(row)
         if row.get("trades"):
             print(f"   n={row['trades']}  win={row['win_rate']}%  "
@@ -244,13 +282,17 @@ def main():
     print()
     print(f"Saved to {OUTPUT_FILE}")
     print()
-    print("Read this with care: profit factor alone isn't the whole story.")
-    print("Compare return_per_bar too — a strategy holding 60 bars ties up")
-    print("capital 12x longer than one holding 5, so a lower profit factor")
-    print("with a much shorter hold can still be the better use of money.")
-    print("Also check worst_trade: a strategy you'd abandon in a drawdown")
-    print("has no edge in practice. These results exclude position sizing")
-    print("and overlapping-position effects.")
+    print("Read this with care:")
+    print("  - Compare return_per_bar, not just profit factor: a 60-bar")
+    print("    strategy ties up capital 12x longer than a 5-bar one.")
+    print("  - Check 'truncated': trades that ended early only because")
+    print("    history ran out. If a long-hold strategy has many, its real")
+    print("    hold is shorter than the label suggests and the numbers are")
+    print("    less trustworthy.")
+    print("  - Check worst_trade: a strategy you'd abandon mid-drawdown has")
+    print("    no edge in practice.")
+    print("  - These results exclude position sizing and the fact that long")
+    print("    holds mean more overlapping positions competing for capital.")
 
 
 if __name__ == "__main__":
