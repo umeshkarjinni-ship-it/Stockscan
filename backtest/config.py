@@ -85,15 +85,36 @@ HOLDING_PERIODS = [5, 10, 20, 60]
 # Fallback maximum holding period (used if no other exit occurs)
 MAX_HOLD_DAYS = 40
 
+# ---------------------------------------------------------------------
+# Exit rules
+# ---------------------------------------------------------------------
+#
+# MEASURED RESULT — do not enable these casually.
+#
+# These flags did nothing until exit_engine.py was actually implemented.
+# The first run with all three stops active gave:
+#
+#     stops ON  : PF 1.27, win 36.7%, avg hold 17.6 bars
+#     stops OFF : PF 2.15, win 57.0%, avg hold 39.9 bars
+#
+# The stops worked as designed — average loser improved from -10.1% to
+# -6.2% — but they also cut short the winners the strategy depends on,
+# and net profit factor fell ~40%. That's typical for trend following:
+# the edge comes from letting a minority of large winners run (best trade
+# here was +146%), so anything that truncates them is expensive.
+#
+# Defaults are therefore OFF. Use compare_exits.py to test variations
+# against your own signal set before turning any of them back on.
+
 # Exit on VSTOP trend reversal
-USE_VSTOP_EXIT = True
+USE_VSTOP_EXIT = False
 
 # ATR Stop Loss
-USE_ATR_STOP = True
+USE_ATR_STOP = False
 ATR_STOP_MULTIPLIER = 2.0
 
 # ATR Trailing Stop
-USE_TRAILING_STOP = True
+USE_TRAILING_STOP = False
 TRAILING_STOP_MULTIPLIER = 2.5
 
 # Optional fixed profit target (%)
