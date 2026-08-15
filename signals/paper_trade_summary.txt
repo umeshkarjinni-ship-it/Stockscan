@@ -2,17 +2,20 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 15-Aug-2026 14:59
-Open positions   : 5
+Generated        : 15-Aug-2026 15:12
+Open positions   : 13
 Closed positions : 0
 
 No closed trades yet — check back once positions reach
 the 40-trading-day holding period.
 
 ------------------------------------------------------------
-  1 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
+  4 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
 ------------------------------------------------------------
   BOSCHLTD (Monthly): Price moved +14.1% since the signal bar (41278.36 -> 47100.00)
+  CNL (Monthly): Price moved +24.7% since the signal bar (997.15 -> 1243.00)
+  MMFL (Monthly): Price moved +10.2% since the signal bar (535.00 -> 589.75)
+  GREAVESCOT (Monthly): Price moved -18.3% since the signal bar (238.05 -> 194.37)
 
 Not financial advice — forward-tracked results only reflect
 this specific rule set and holding period, not any trade you
