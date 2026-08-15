@@ -11,13 +11,13 @@ on:
 jobs:
   backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 180   # ~500 Large/Mid/Small cap symbols across both
-                            # Weekly and Monthly timeframes takes roughly
-                            # 90 minutes at ~11 symbols/min — this leaves
-                            # generous headroom. Raise toward GitHub's
-                            # 360-minute hard cap only if you set
-                            # INCLUDE_OTHER_CATEGORY = True (~2,075 symbols),
-                            # which likely will NOT fit in one job.
+    timeout-minutes: 340   # Backtest cost scales roughly with the SQUARE of
+                            # history length, since the walk-forward loop
+                            # recomputes the full indicator stack on a growing
+                            # window for every bar. With HISTORY_PERIOD="15y"
+                            # and ~500 symbols across both timeframes this
+                            # should finish well inside the window; GitHub's
+                            # hard cap per job is 360 minutes.
 
     steps:
       - name: Checkout repository

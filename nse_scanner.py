@@ -130,18 +130,23 @@ USE_EARNINGS_AVOIDANCE = False
 EARNINGS_AVOID_DAYS = 5           # skip BUY if earnings due within N days
 
 # Data
-HISTORY_PERIOD = "max"            # yfinance period to download.
+HISTORY_PERIOD = "15y"            # yfinance period to download.
                                   #
-                                  # MUST be long enough for the MONTHLY
-                                  # timeframe: compute_signals() needs
-                                  # KAMA_SLOW_LEN + 2 = 102 bars before it
-                                  # returns anything, and 102 MONTHLY bars
-                                  # is 8.5 years. With the old "10y" setting
-                                  # that left only ~18 usable monthly bars,
-                                  # so monthly backtests covered barely a
-                                  # year regardless of warm-up settings.
-                                  # "max" pulls each stock's full listed
-                                  # history instead.
+                                  # MUST exceed the MONTHLY warm-up:
+                                  # compute_signals() needs KAMA_SLOW_LEN + 2
+                                  # = 102 bars before returning anything, and
+                                  # 102 MONTHLY bars is 8.5 years. The old
+                                  # "10y" left only ~18 usable monthly bars,
+                                  # so monthly backtests covered barely a year.
+                                  #
+                                  # 15y gives ~180 monthly bars (~78 usable,
+                                  # i.e. 6.5 years of testable signals) while
+                                  # staying much faster than "max": the
+                                  # backtest re-runs the whole indicator stack
+                                  # on a growing window for every bar, so
+                                  # runtime scales roughly with the SQUARE of
+                                  # history length. "max" made a full run take
+                                  # ~6 hours and blow past the job timeout.
 BATCH_SIZE = 40                   # tickers per yfinance batch download
 BATCH_SLEEP_SEC = 3               # pause between batches (avoid rate limits)
 EXCHANGE_SUFFIX = ".NS"           # ".NS" = NSE, ".BO" = BSE
