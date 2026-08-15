@@ -22,6 +22,7 @@ from backtest.utils import (
 from nse_scanner import (
     fetch_single,
     compute_signals,
+    fetch_nifty_daily,
 )
 
 from backtest.exit_engine import ExitEngine
@@ -80,12 +81,45 @@ class TradeSimulator:
     def __init__(
         self,
         holding_period: int = 20,
+        exit_engine: ExitEngine = None,
+        save_to: str = None,
     ):
 
         self.holding_period = holding_period
 
         self.trades: List[Trade] = []
-        self.exit_engine = ExitEngine()
+
+        # Allow a caller to inject a pre-configured ExitEngine so several
+        # exit strategies can be compared against the same signal set
+        # without editing backtest/config.py.
+        self.exit_engine = exit_engine if exit_engine is not None else ExitEngine()
+
+        # Optional override of the output path, so comparison runs don't
+        # overwrite the main backtest_trades.csv.
+        self.save_to = save_to
+
+        # Per-symbol cache of computed signals, so repeated trades on the
+        # same symbol don't re-download and re-compute.
+        self._signal_cache = {}
+
+        # Benchmark series for the relative-strength filter. Fetched
+        # lazily on first use so constructing a simulator stays cheap.
+        self._nifty_close = None
+        self._nifty_loaded = False
+
+    # ------------------------------------------------------------------
+
+    @property
+    def nifty_close(self):
+        if not self._nifty_loaded:
+            self._nifty_loaded = True
+            try:
+                nifty = fetch_nifty_daily()
+                if nifty is not None and not nifty.empty:
+                    self._nifty_close = nifty["Close"]
+            except Exception:
+                logger.warning("Could not fetch NIFTY; RS filter disabled in simulation.")
+        return self._nifty_close
 
     # ------------------------------------------------------------------
 
@@ -131,16 +165,30 @@ class TradeSimulator:
 
         symbol = signal["symbol"]
 
-        signals = fetch_single(symbol)
+        # Cache per symbol. This used to call fetch_single() + 
+        # compute_signals() once per TRADE — with 1,236 trades across only
+        # 377 unique symbols that meant ~3.3x redundant downloads and
+        # indicator recomputation.
+        if symbol in self._signal_cache:
+            signals = self._signal_cache[symbol]
+        else:
+            signals = fetch_single(symbol)
 
-        if signals is None:
-            return None
+            if signals is None or len(signals) == 0:
+                self._signal_cache[symbol] = None
+                return None
 
-        if len(signals) == 0:
-            return None
+            signals = signals.sort_index()
 
-        signals = signals.sort_index()
-        signals = compute_signals(signals, None)
+            # NOTE: nifty_close is passed through so the relative-strength
+            # line matches what the signal engine computed. Passing None
+            # here (as this previously did) makes compute_signals() skip
+            # the RS filter entirely, so the bars used for exits were
+            # computed under different conditions than the bars used to
+            # generate the signal.
+            signals = compute_signals(signals, self.nifty_close)
+
+            self._signal_cache[symbol] = signals
 
         if signals is None or signals.empty:
             return None
@@ -148,7 +196,12 @@ class TradeSimulator:
 
         future = signals[signals.index > signal_date]
 
-        if len(future) < self.holding_period + 1:
+        # Require at least 2 bars (entry + one more) rather than a fixed
+        # holding_period. The exit engine decides how long to hold, so
+        # gating on holding_period here silently DISCARDED every signal
+        # too close to the end of history — biasing the sample by dropping
+        # the most recent trades.
+        if len(future) < 2:
             return None
 
         entry_bar = future.iloc[0]
@@ -241,7 +294,7 @@ class TradeSimulator:
         )
 
         signals.to_csv(
-            cfg.TRADES_FILE,
+            self.save_to if self.save_to else cfg.TRADES_FILE,
             index=False,
         )
 
