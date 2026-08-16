@@ -295,6 +295,7 @@ def main():
         c for c in [
             "Rank",
             "Symbol",
+            "Category",
             "Timeframe",
             "Price",
             "CurrentPrice",
