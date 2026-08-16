@@ -55,7 +55,7 @@ UNIVERSE_CSV = "stocks_universe_full.csv"     # Symbol, Name, Category columns
 # point this at its output instead:
 #   UNIVERSE_CSV = "stocks_universe_full.csv"
 
-INCLUDE_OTHER_CATEGORY = False            # "Other" = micro-caps/recent listings/
+INCLUDE_OTHER_CATEGORY = True             # "Other" = micro-caps/recent listings/
                                           # thin liquidity from build_universe.py.
                                           # Set False to scan only the ~500
                                           # Large/Mid/Small cap names.
@@ -172,7 +172,7 @@ ADX_THRESHOLD = 20                # require ADX above this to accept a BUY
 # Market regime filter — only take a BUY on a stock if the NIFTY 50 index
 # itself is in an uptrend on the same timeframe. Cuts down on buying
 # individual stocks against the broader market current.
-USE_MARKET_REGIME_FILTER = False
+USE_MARKET_REGIME_FILTER = True
 REGIME_INDEX_TICKER = "^NSEI"     # NIFTY 50 on Yahoo Finance
 # IMPORTANT: When NIFTY Weekly VStop is DOWN, all Weekly confirmed BUYs
 # are intentionally blocked by the market-regime filter. The new BUY
@@ -872,6 +872,8 @@ def scan() -> pd.DataFrame:
         "_market_regime": market_regime.copy(),
     }
 
+    bar_counts = {}
+
     for batch_num, i in enumerate(range(0, total, BATCH_SIZE), start=1):
         batch = tickers[i:i + BATCH_SIZE]
         elapsed = time.time() - run_start
@@ -909,6 +911,14 @@ def scan() -> pd.DataFrame:
                 df_daily = df_daily[["Open", "High", "Low", "Close", "Volume"]].dropna()
                 if df_daily.empty:
                     continue
+
+                # Remember how much usable history this symbol had, so the
+                # failure report can say WHY a symbol was skipped and when it
+                # will qualify, rather than just "insufficient history".
+                try:
+                    bar_counts[symbol] = len(resample(df_daily, "W"))
+                except Exception:
+                    pass
 
                 # ----------------------------------------------------------
                 # Data-quality and liquidity gates
@@ -1191,10 +1201,30 @@ def scan() -> pd.DataFrame:
     attempted_symbols = {symbol_map[t] for t in tickers}
     failed_symbols = {f[0] for f in failures}
     silent_gaps = attempted_symbols - seen_symbols - failed_symbols
+
+    # These are almost always recent IPOs, not errors. compute_signals()
+    # needs KAMA_SLOW_LEN + 2 bars before it returns anything — 102 bars,
+    # which is 2 years of Weekly or 8.5 years of Monthly data. A stock
+    # listed in 2025 simply cannot supply that yet.
+    #
+    # Lowering KAMA_SLOW_LEN to include them would mean computing a
+    # "100-period trend" from 40 bars: a number that looks valid and means
+    # nothing. Better to exclude them and say when they'll qualify.
+    min_bars = KAMA_SLOW_LEN + 2
     for sym in silent_gaps:
-        failures.append((sym, "Data fetched but insufficient history for the indicators "
-                               "(e.g. recently listed stock) — needs ~8+ years of history "
-                               "for a stable Monthly EMA100"))
+        detail = ""
+        try:
+            wk = bar_counts.get(sym)
+            if wk:
+                weeks_short = max(0, min_bars - wk)
+                eta = (f", qualifies in ~{weeks_short} weeks"
+                       if 0 < weeks_short <= 260 else "")
+                detail = f" (has {wk} weekly bars, needs {min_bars}{eta})"
+        except Exception:
+            pass
+        failures.append((sym,
+            f"Too little history for a {KAMA_SLOW_LEN}-period trend filter — "
+            f"typically a recent listing{detail}"))
 
     if failures:
         print(f"\n{'=' * 70}\n{len(failures)} SYMBOL(S) COULD NOT BE SCANNED\n{'=' * 70}")
