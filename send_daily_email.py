@@ -36,6 +36,7 @@ import smtplib
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 import pandas as pd
 
@@ -56,6 +57,14 @@ SMTP_PORT = int(os.environ.get("SCANNER_SMTP_PORT", "587"))
 
 # Optional: link to your published dashboard, shown at the bottom.
 DASHBOARD_URL = os.environ.get("SCANNER_DASHBOARD_URL", "")
+
+# Attach the generated dashboard so it can be opened and rendered directly.
+#
+# GitHub Pages needs a PUBLIC repo on the free plan, so a private repo has no
+# published dashboard URL — and linking to the file on github.com just shows
+# the HTML source, not the rendered page. Attaching sidesteps both problems.
+DASHBOARD_FILE = os.path.join("docs", "index.html")
+ATTACH_DASHBOARD = os.environ.get("SCANNER_ATTACH_DASHBOARD", "1") not in ("0", "false", "False")
 
 MAX_ROWS = 15
 
@@ -234,7 +243,7 @@ def build_html():
     if DASHBOARD_URL:
         parts.append(
             f'<div style="margin-top:16px"><a href="{esc(DASHBOARD_URL)}" '
-            'style="font:13px sans-serif;color:#1a5fb4">View the full dashboard →</a></div>'
+            'style="font:13px sans-serif;color:#1a5fb4">Open dashboard on GitHub →</a></div>'
         )
 
     parts.append(
@@ -262,11 +271,32 @@ def main():
                f"{len(sell) if sell is not None else 0} SELL — "
                f"{datetime.now().strftime('%d %b %Y')}")
 
-    msg = MIMEMultipart("alternative")
+    # "mixed" rather than "alternative" — an alternative container is for
+    # different renderings of the SAME content, and attachments in one are
+    # unreliable across mail clients.
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"] = EMAIL_FROM
     msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(html, "html"))
+
+    body = MIMEMultipart("alternative")
+    body.attach(MIMEText(html, "html"))
+    msg.attach(body)
+
+    if ATTACH_DASHBOARD and os.path.exists(DASHBOARD_FILE):
+        try:
+            with open(DASHBOARD_FILE, "rb") as f:
+                part = MIMEApplication(f.read(), _subtype="html")
+            stamp = datetime.now().strftime("%Y-%m-%d")
+            part.add_header("Content-Disposition", "attachment",
+                            filename=f"niftypulsepro_dashboard_{stamp}.html")
+            msg.attach(part)
+            size_kb = os.path.getsize(DASHBOARD_FILE) / 1024
+            print(f"Attached dashboard ({size_kb:.0f} KB)")
+        except Exception as e:
+            print(f"Could not attach dashboard: {e}")
+    elif ATTACH_DASHBOARD:
+        print(f"{DASHBOARD_FILE} not found — sending without the attachment.")
 
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
