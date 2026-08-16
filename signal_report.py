@@ -224,6 +224,8 @@ def output_columns(frame):
         "CurrentPrice",
         "PriceDriftPct",
         "StalePrice",
+        "PctFrom52WHigh",
+        "PullbackZone",
         "Volume",
         "VolAboveAvg",
         "RSI",

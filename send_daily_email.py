@@ -106,9 +106,9 @@ def signal_table(df, title, kind):
 
     accent = "#0a7d3a" if kind == "buy" else "#b3261e"
     cols = [c for c in ["Symbol", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct",
-                        "BuyScore", "RSI", "ADX"] if c in df.columns]
+                        "PctFrom52WHigh", "BuyScore", "RSI", "ADX"] if c in df.columns]
     labels = {"Price": "Signal", "CurrentPrice": "Current", "PriceDriftPct": "Drift %",
-              "BuyScore": "Score"}
+              "PctFrom52WHigh": "Off 52w High", "BuyScore": "Score"}
 
     head = "".join(
         f'<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #ddd;'
@@ -119,6 +119,7 @@ def signal_table(df, title, kind):
 
     body = ""
     for _, r in df.head(MAX_ROWS).iterrows():
+        in_pullback = str(r.get("PullbackZone", "")).strip().lower() in ("true", "1")
         cells = ""
         for c in cols:
             val = fmt(r[c]) if c not in ("Symbol", "Timeframe") else esc(r[c])
@@ -134,6 +135,9 @@ def signal_table(df, title, kind):
                                'padding:1px 4px;border-radius:2px">STALE</span>'
                 except (TypeError, ValueError):
                     pass
+            if c == "PctFrom52WHigh" and in_pullback:
+                val += ' <span style="background:#e6f6ec;color:#0a7d3a;font:600 9px sans-serif;' \
+                       'padding:1px 4px;border-radius:2px">PULLBACK</span>'
             cells += f'<td style="{style}">{val}</td>'
         body += f"<tr>{cells}</tr>"
 
@@ -142,6 +146,15 @@ def signal_table(df, title, kind):
         f'{esc(title)} <span style="font-weight:400;color:#888">({len(df)})</span></h3>'
         f'<table style="border-collapse:collapse;width:100%">'
         f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+        + (
+            '<div style="font:11px sans-serif;color:#777;margin-top:8px;line-height:1.6">'
+            '<b style="color:#0a7d3a">PULLBACK</b> = RSI under 45, 8%+ below the 52-week high, '
+            'trend intact. Out-of-sample testing found pullback entries beat strength entries '
+            'by ~7-12%, while the strength entry this scanner fires on tested <i>worse</i> than '
+            'a random nearby date. Use it to time an entry you have already decided on — '
+            'not as a reason to buy.</div>'
+            if kind == "buy" and "PctFrom52WHigh" in df.columns else ""
+        )
     )
 
 

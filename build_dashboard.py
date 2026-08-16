@@ -155,12 +155,13 @@ def build_signal_table(df, title, kind):
     if df is None:
         return f'<section class="panel"><h2>{esc(title)}</h2><p class="empty">No data yet — this file hasn\'t been generated this run.</p></section>'
 
-    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"] if c in df.columns]
+    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct", "PctFrom52WHigh", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"] if c in df.columns]
     rows_html = ""
     for _, r in df.head(20).iterrows():
         cells = ""
+        in_pullback = str(r.get("PullbackZone", "")).strip().lower() in ("true", "1")
         for c in cols:
-            val = fmt_num(r[c]) if c in ('Price','CurrentPrice','PriceDriftPct','BuyScore','MLWinProbability','RSI','ADX','VolumeRatio') else r[c]
+            val = fmt_num(r[c]) if c in ('Price','CurrentPrice','PriceDriftPct','PctFrom52WHigh','BuyScore','MLWinProbability','RSI','ADX','VolumeRatio') else r[c]
             # Highlight signals whose price has already moved a long way
             # from the signal bar — the entry you'd get now differs from
             # the one the signal identified.
@@ -169,6 +170,21 @@ def build_signal_table(df, title, kind):
                 stale = bool(r.get("StalePrice", False))
                 badge = ' <span class="badge flag">STALE</span>' if stale else ""
                 cells += f"<td class='{cls}'>{esc(val)}{badge}</td>"
+            elif c == "PctFrom52WHigh":
+                # Pullback-entry reference. Out-of-sample testing found
+                # entering on a pullback beat entering on strength by
+                # +7-12%; entering on strength was worse than random.
+                badge = (' <span class="badge pullback" title="RSI below 45 and 8%+ '
+                         'off the 52-week high with trend intact — historically a '
+                         'better entry point than buying strength">PULLBACK</span>'
+                         if in_pullback else "")
+                cells += f"<td>{esc(val)}{badge}</td>"
+            elif c == "RSI":
+                try:
+                    lo = float(r[c]) < 45
+                except (TypeError, ValueError):
+                    lo = False
+                cells += f"<td class='{'rsi-low' if lo else ''}'>{esc(val)}</td>"
             else:
                 cells += f"<td>{esc(val)}</td>"
         rows_html += f"<tr>{cells}</tr>"
@@ -179,11 +195,27 @@ def build_signal_table(df, title, kind):
         "Price": "Signal Price",
         "CurrentPrice": "Current Price",
         "PriceDriftPct": "Drift %",
+        "PctFrom52WHigh": "Off 52w High %",
         "VolumeRatio": "Vol Ratio",
         "MLWinProbability": "ML Win %",
     }
     header_html = "".join(f"<th>{esc(header_labels.get(c, c))}</th>" for c in cols)
     row_class = "buy-row" if kind == "buy" else "sell-row"
+
+    # Explain the PULLBACK marker where it appears, so the badge means
+    # something to a reader who wasn't part of the analysis that produced it.
+    legend = ""
+    if kind == "buy" and "PctFrom52WHigh" in df.columns:
+        legend = (
+            '<div class="legend">'
+            '<b>PULLBACK</b> = RSI under 45, at least 8% below the 52-week high, '
+            'trend still intact. In out-of-sample testing (2021+ and 2023+), entering '
+            'on a pullback beat entering on strength by roughly 7-12%, while the '
+            'strength-based entry this scanner fires on was <i>worse</i> than a random '
+            'nearby date. Treat it as guidance on <i>when</i> to enter a stock you have '
+            'already chosen — not as a reason to buy.'
+            '</div>'
+        )
     return f'''
     <section class="panel">
       <h2>{esc(title)}</h2>
@@ -193,6 +225,7 @@ def build_signal_table(df, title, kind):
           <tbody>{rows_html}</tbody>
         </table>
       </div>
+      {legend}
     </section>'''
 
 
@@ -494,6 +527,11 @@ def main():
                  padding:8px 14px; font-family:'IBM Plex Mono',monospace; font-size:13px;
                  color:var(--muted); }}
   .regime-note {{ margin-top:12px; color:var(--gold); font-size:13px; }}
+  .badge.pullback {{ background: rgba(74,222,128,0.15); color: var(--pos); cursor: help; }}
+  .rsi-low {{ color: var(--gold); }}
+  .legend {{ margin-top:12px; padding-top:10px; border-top:1px solid var(--border);
+            font:12px 'IBM Plex Sans',sans-serif; color:var(--muted); line-height:1.6; }}
+  .legend b {{ color: var(--pos); }}
   .badge.note {{ background: rgba(139,147,161,0.15); color: var(--muted); cursor: help; }}
   .conflict-panel {{ border-color: rgba(248,113,113,0.35); }}
 
