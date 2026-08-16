@@ -31,12 +31,14 @@ USAGE
 """
 
 import os
+import io
 import json
 import smtplib
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 
 import pandas as pd
 
@@ -65,6 +67,16 @@ DASHBOARD_URL = os.environ.get("SCANNER_DASHBOARD_URL", "")
 # the HTML source, not the rendered page. Attaching sidesteps both problems.
 DASHBOARD_FILE = os.path.join("docs", "index.html")
 ATTACH_DASHBOARD = os.environ.get("SCANNER_ATTACH_DASHBOARD", "1") not in ("0", "false", "False")
+
+# Inline price charts for the top BUY signals.
+#
+# Each chart shows Close, the Volatility Stop and KAMA on the signal's own
+# timeframe, with BUY/SELL markers — so you can see the setup rather than
+# only reading numbers. Capped because every chart means one more download
+# and a larger message.
+INCLUDE_CHARTS = os.environ.get("SCANNER_EMAIL_CHARTS", "1") not in ("0", "false", "False")
+MAX_CHARTS = int(os.environ.get("SCANNER_MAX_CHARTS", "6"))
+CHART_BARS = 60          # bars of history to display
 
 MAX_ROWS = 15
 
@@ -167,7 +179,124 @@ def signal_table(df, title, kind):
     )
 
 
-def build_html():
+
+# ---------------------------------------------------------------------
+# Price charts
+# ---------------------------------------------------------------------
+
+def build_charts(buy_df):
+    """
+    Render a small PNG per BUY signal: Close, Volatility Stop, KAMA, with
+    BUY/SELL markers on the signal's own timeframe.
+
+    Returns {cid: png_bytes}. Failures are skipped rather than raised — a
+    chart that won't render must never stop the email going out.
+    """
+    if buy_df is None or not INCLUDE_CHARTS:
+        return {}
+
+    # Imported here so the email still sends on a machine without
+    # matplotlib, or if a backend problem arises.
+    try:
+        import matplotlib
+        matplotlib.use("Agg")          # headless: no display needed
+        import matplotlib.pyplot as plt
+        from matplotlib.ticker import FuncFormatter
+    except Exception as e:
+        print(f"matplotlib unavailable — skipping charts ({e})")
+        return {}
+
+    try:
+        from nse_scanner import fetch_single, compute_signals, resample, fetch_nifty_daily
+    except Exception as e:
+        print(f"Could not import scanner functions — skipping charts ({e})")
+        return {}
+
+    nifty_close = None
+    try:
+        nd = fetch_nifty_daily()
+        if nd is not None and not nd.empty:
+            nifty_close = nd["Close"]
+    except Exception:
+        pass
+
+    charts = {}
+    for _, r in buy_df.head(MAX_CHARTS).iterrows():
+        symbol = str(r.get("Symbol", "")).strip()
+        tf = str(r.get("Timeframe", "Weekly")).strip()
+        if not symbol:
+            continue
+        try:
+            raw = fetch_single(symbol)
+            if raw is None or len(raw) == 0:
+                continue
+            rule = "ME" if tf.lower() == "monthly" else "W"
+            sig = compute_signals(resample(raw.sort_index(), rule), nifty_close)
+            if sig is None or sig.empty:
+                continue
+
+            view = sig.tail(CHART_BARS)
+
+            fig, ax = plt.subplots(figsize=(4.6, 2.4), dpi=110)
+            ax.plot(view.index, view["Close"], lw=1.6, color="#1f77b4", label="Close")
+            if "VSTOP" in view.columns:
+                ax.plot(view.index, view["VSTOP"], lw=1.0, color="#ff7f0e",
+                        ls="--", label="VStop")
+            if "KAMA_MID" in view.columns:
+                ax.plot(view.index, view["KAMA_MID"], lw=1.0, color="#7f7f7f",
+                        alpha=0.8, label="KAMA")
+
+            # Signal markers
+            if "BUY_SIGNAL_CORE" in view.columns:
+                b = view[view["BUY_SIGNAL_CORE"].fillna(False).astype(bool)]
+                if not b.empty:
+                    ax.scatter(b.index, b["Close"], marker="^", s=55,
+                               color="#2ca02c", zorder=5, label="BUY")
+            if "SELL_SIGNAL" in view.columns:
+                sl = view[view["SELL_SIGNAL"].fillna(False).astype(bool)]
+                if not sl.empty:
+                    ax.scatter(sl.index, sl["Close"], marker="v", s=55,
+                               color="#d62728", zorder=5, label="SELL")
+
+            # Shade the pullback zone, the one validated marker.
+            try:
+                lookback = 52 if rule == "W" else 12
+                hi = sig["Close"].rolling(lookback, min_periods=10).max()
+                off = (sig["Close"] - hi) / hi * 100
+                pb = (sig["Close"] > sig["KAMA_MID"]) & (sig["RSI"] < 45) & (off <= -8)
+                pbv = pb.reindex(view.index).fillna(False).astype(bool)
+                if pbv.any():
+                    ax.fill_between(view.index, view["Close"].min(), view["Close"].max(),
+                                    where=pbv.values, color="#2ca02c", alpha=0.10,
+                                    step="mid", label="Pullback")
+            except Exception:
+                pass
+
+            ax.set_title(f"{symbol} — {tf}", fontsize=9, fontweight="bold")
+            ax.tick_params(labelsize=6)
+            ax.grid(alpha=0.25, lw=0.5)
+            ax.legend(fontsize=5.5, loc="upper left", framealpha=0.85)
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
+            for sp in ("top", "right"):
+                ax.spines[sp].set_visible(False)
+            fig.autofmt_xdate(rotation=0, ha="center")
+            fig.tight_layout(pad=0.4)
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight")
+            plt.close(fig)
+            charts[f"chart_{symbol}"] = buf.getvalue()
+        except Exception as e:
+            print(f"  chart failed for {symbol}: {e}")
+            continue
+
+    if charts:
+        total_kb = sum(len(v) for v in charts.values()) / 1024
+        print(f"Rendered {len(charts)} chart(s), {total_kb:.0f} KB total")
+    return charts
+
+
+def build_html(charts=None):
     buy = read_first_available(BUY_FILE, BUY_FALLBACK)
     sell = read_csv_safe(SELL_FILE)
     conflicts = read_csv_safe(CONFLICTS_FILE)
@@ -223,6 +352,24 @@ def build_html():
         )
 
     parts.append(signal_table(buy, "BUY Signals", "buy"))
+
+    # Charts, referenced by Content-ID so they render inline rather than
+    # as separate downloads.
+    if charts:
+        parts.append('<h3 style="font:600 15px sans-serif;color:#1a1a1a;margin:24px 0 8px">'
+                     'Charts</h3>')
+        parts.append('<table style="border-collapse:collapse"><tr>')
+        for i, cid in enumerate(charts):
+            if i and i % 2 == 0:
+                parts.append('</tr><tr>')
+            parts.append(f'<td style="padding:4px"><img src="cid:{cid}" '
+                         f'style="width:330px;max-width:100%;border:1px solid #eee;'
+                         f'border-radius:4px" alt="{esc(cid)}"></td>')
+        parts.append('</tr></table>')
+        parts.append('<div style="font:11px sans-serif;color:#777;margin-top:6px;line-height:1.6">'
+                     'Blue = close, orange dashed = volatility stop, grey = KAMA trend. '
+                     'Green shading marks the pullback zone.</div>')
+
     parts.append(signal_table(sell, "SELL Signals", "sell"))
 
     if paper is not None and "Status" in paper.columns:
@@ -262,7 +409,10 @@ def main():
         print("Email not configured — set SCANNER_EMAIL_FROM / _TO / _APP_PASSWORD. Skipping.")
         return
 
-    html = build_html()
+    buy_for_charts = read_first_available(BUY_FILE, BUY_FALLBACK)
+    charts = build_charts(buy_for_charts)
+
+    html = build_html(charts)
     recipients = [a.strip() for a in EMAIL_TO.split(",") if a.strip()]
 
     buy = read_first_available(BUY_FILE, BUY_FALLBACK)
@@ -279,9 +429,20 @@ def main():
     msg["From"] = EMAIL_FROM
     msg["To"] = ", ".join(recipients)
 
+    # "related" wraps the HTML together with the images it references by
+    # CID; that pairing is what makes them display inline.
+    related = MIMEMultipart("related")
     body = MIMEMultipart("alternative")
     body.attach(MIMEText(html, "html"))
-    msg.attach(body)
+    related.attach(body)
+
+    for cid, png in (charts or {}).items():
+        img = MIMEImage(png, _subtype="png")
+        img.add_header("Content-ID", f"<{cid}>")
+        img.add_header("Content-Disposition", "inline", filename=f"{cid}.png")
+        related.attach(img)
+
+    msg.attach(related)
 
     if ATTACH_DASHBOARD and os.path.exists(DASHBOARD_FILE):
         try:
