@@ -126,7 +126,7 @@ def signal_table(df, title, kind):
                 f'<p style="font:13px sans-serif;color:#777;margin:0">None today.</p>')
 
     accent = "#0a7d3a" if kind == "buy" else "#b3261e"
-    cols = [c for c in ["Symbol", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct",
+    cols = [c for c in ["Symbol", "Timeframe", "Catergory","Price", "CurrentPrice", "PriceDriftPct",
                         "PctFrom52WHigh", "BuyScore", "RSI", "ADX"] if c in df.columns]
     labels = {"Price": "Signal", "CurrentPrice": "Current", "PriceDriftPct": "Drift %",
               "PctFrom52WHigh": "Off 52w High", "BuyScore": "Score"}
