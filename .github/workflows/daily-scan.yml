@@ -3,7 +3,15 @@ name: NiftyPulsePro Daily Scan
 on:
   workflow_dispatch:        # allows manual runs from the Actions tab
   schedule:
-    - cron: "0 10 * * 1-5"  # 10:00 UTC = 3:30 PM IST, Mon-Fri (NSE close)
+    # 02:30 UTC = 08:00 IST, Mon-Fri — before the 09:15 IST market open,
+    # so you get the recommendations with time to act on them.
+    #
+    # Signals come from COMPLETED bars, so running pre-open uses the
+    # previous session's close. That's correct, not a limitation.
+    #
+    # GitHub schedules are best-effort and can be delayed 10-30+ minutes
+    # under load, so treat 08:00 as "around 08:00", not a guarantee.
+    - cron: "30 2 * * 1-5"
 
 permissions:
   contents: write   # needed so the workflow can commit paper_trades.csv back
@@ -56,6 +64,15 @@ jobs:
 
       - name: Build dashboard
         run: python -u build_dashboard.py
+
+      - name: Email daily recommendations
+        if: always()   # still send even if an earlier optional step failed
+        env:
+          SCANNER_EMAIL_FROM: ${{ secrets.SCANNER_EMAIL_FROM }}
+          SCANNER_EMAIL_TO: ${{ secrets.SCANNER_EMAIL_TO }}
+          SCANNER_EMAIL_APP_PASSWORD: ${{ secrets.SCANNER_EMAIL_APP_PASSWORD }}
+          SCANNER_DASHBOARD_URL: ${{ vars.SCANNER_DASHBOARD_URL }}
+        run: python -u send_daily_email.py
 
       - name: Commit paper trade tracker + dashboard
         if: always()
