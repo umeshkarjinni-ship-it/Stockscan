@@ -1,69 +1,115 @@
-name: NSE Daily Scanner
+name: NiftyPulsePro Daily Scan
 
 on:
+  workflow_dispatch:        # allows manual runs from the Actions tab
   schedule:
-    # 11:00 AM IST = 05:30 UTC, Monday-Friday (NSE trading days).
-    # GitHub Actions cron is always UTC — adjust the first two numbers
-    # (minute hour) if you want a different IST time. Example: for 6:00 PM
-    # IST use '30 12 * * 1-5'.
-    - cron: '30 5 * * 1-5'
-  workflow_dispatch: {}   # lets you manually trigger a run from the Actions tab
+    # 02:30 UTC = 08:00 IST, Mon-Fri — before the 09:15 IST market open,
+    # so you get the recommendations with time to act on them.
+    #
+    # Signals come from COMPLETED bars, so running pre-open uses the
+    # previous session's close. That's correct, not a limitation.
+    #
+    # GitHub schedules are best-effort and can be delayed 10-30+ minutes
+    # under load, so treat 08:00 as "around 08:00", not a guarantee.
+    - cron: "30 2 * * 1-5"
 
 permissions:
   contents: write   # needed so the workflow can commit paper_trades.csv back
 
 jobs:
-  scan:
+  run-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 210   # generous ceiling for a ~2000+ stock universe.
-                            # The ~140-stock starter list takes a few
-                            # minutes; a full ~2000-2100 stock NSE universe
-                            # (via build_universe.py) can take 90-150+
-                            # minutes depending on Yahoo Finance's response
-                            # times that day. GitHub's hard per-job cap is
-                            # 360 minutes on the free tier, so 210 leaves
-                            # real headroom without being unbounded.
+    timeout-minutes: 300   # a full 2,075-symbol scan can take well over an
+                            # hour (10y of daily data x thousands of tickers)
+                            # — this was previously 30, which cut the run
+                            # off after only ~500 symbols
+
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run NSE scanner
+      - name: Run scanner
         env:
           SCANNER_EMAIL_FROM: ${{ secrets.SCANNER_EMAIL_FROM }}
           SCANNER_EMAIL_TO: ${{ secrets.SCANNER_EMAIL_TO }}
           SCANNER_EMAIL_APP_PASSWORD: ${{ secrets.SCANNER_EMAIL_APP_PASSWORD }}
-        run: python nse_scanner.py
+          SCANNER_TELEGRAM_TOKEN: ${{ secrets.SCANNER_TELEGRAM_TOKEN }}
+          SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+        run: python -u nse_scanner.py
 
-      # paper_trades.csv persists the paper-trade tracker's open/closed
-      # positions across runs. Each run is a fresh checkout, so without
-      # committing this back, every day would start from zero and the
-      # tracker could never accumulate real win-rate/return stats.
-      - name: Commit updated paper trade tracker
+      - name: Generate signal report
+        run: python -u signal_report.py
+
+      - name: Rank buy candidates
+        run: python -u rank_buy.py
+
+      - name: Score candidates with ML model
+        run: python -u -m ml.predict
+
+      - name: Check for conflicting BUY/SELL signals
+        run: python -u check_conflicting_signals.py
+
+      - name: Track daily recommendations forward
+        run: python -u paper_trade_tracker.py
+
+      - name: Build dashboard
+        run: python -u build_dashboard.py
+
+      - name: Email daily recommendations
+        if: always()   # still send even if an earlier optional step failed
+        env:
+          SCANNER_EMAIL_FROM: ${{ secrets.SCANNER_EMAIL_FROM }}
+          SCANNER_EMAIL_TO: ${{ secrets.SCANNER_EMAIL_TO }}
+          SCANNER_EMAIL_APP_PASSWORD: ${{ secrets.SCANNER_EMAIL_APP_PASSWORD }}
+          SCANNER_DASHBOARD_URL: ${{ vars.SCANNER_DASHBOARD_URL }}
+        run: python -u send_daily_email.py
+
+      - name: Commit paper trade tracker + dashboard
         if: always()
         run: |
-          if [ -f paper_trades.csv ]; then
-            git config user.name "nse-scanner-bot"
-            git config user.email "actions@github.com"
-            git add paper_trades.csv
-            git diff --staged --quiet || git commit -m "Update paper trade tracker [skip ci]"
-            git push
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Add each path independently and tolerate failures. A single
+          # missing or gitignored file must not abort the whole step —
+          # that previously failed the run with exit code 1 and left the
+          # tracker state uncommitted.
+          for f in signals/paper_trades.csv \
+                   signals/paper_trade_summary.txt \
+                   signals/conflicting_signals.csv \
+                   signals/market_regime.json \
+                   docs/index.html; do
+            [ -f "$f" ] && git add "$f" || echo "skip $f"
+          done
+          git diff --staged --quiet || git commit -m "Update paper trade tracker + dashboard [skip ci]"
+          git push || echo "Nothing to push"
 
-      # Keeps the full CSV (all signals, not just the emailed top 20) and
-      # failed_symbols.csv available to download from the Actions run page,
-      # even though nothing is committed back to the repo.
-      - name: Upload full results as a workflow artifact
+      - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nse-scan-results-${{ github.run_id }}
-          path: signals/
+          name: niftypulsepro-results-${{ github.run_number }}
+          path: |
+            signals/scan_*.csv
+            signals/failed_symbols.csv
+            signals/daily_signal_report.csv
+            signals/daily_top20_buy.csv
+            signals/daily_top20_sell.csv
+            signals/daily_top20_buy_watchlist.csv
+            signals/daily_top20_sell_watchlist.csv
+            signals/daily_top20_buy_ranked.csv
+            signals/daily_top20_buy_ml_ranked.csv
+            signals/conflicting_signals.csv
+            signals/market_regime.json
+            signals/paper_trades.csv
+            signals/paper_trade_summary.txt
           retention-days: 30
