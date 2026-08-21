@@ -130,7 +130,10 @@ EARNINGS_AVOID_DAYS = 5           # skip BUY if earnings due within N days
 HISTORY_PERIOD = "10y"            # yfinance period to download (need enough
                                    # daily bars to build stable monthly EMA100)
 BATCH_SIZE = 40                   # tickers per yfinance batch download
-BATCH_SLEEP_SEC = 3               # pause between batches (avoid rate limits)
+BATCH_SLEEP_SEC = 4               # pause between batches (avoid rate limits) —
+                                   # bumped slightly for large (~2000+ stock)
+                                   # universes, which make many more total
+                                   # requests than the ~140-stock starter list
 EXCHANGE_SUFFIX = ".NS"           # ".NS" = NSE, ".BO" = BSE
 CHECKPOINT_EVERY_N_BATCHES = 5    # autosave partial results periodically —
                                    # matters at 1500+ stocks since a full run
@@ -431,6 +434,27 @@ def load_universe(path: str) -> pd.DataFrame:
     return uni
 
 
+def normalize_ohlcv_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Newer yfinance versions can return MultiIndex columns even for a
+    single-symbol download (e.g. ('Close', '^NSEI') instead of just
+    'Close'), which breaks .resample().agg({...}) with a confusing KeyError.
+    Flattens to plain OHLCV column names regardless of which MultiIndex
+    level holds the field name vs. the ticker. Leaves already-flat
+    DataFrames untouched.
+    """
+    if isinstance(df.columns, pd.MultiIndex):
+        expected = {"Open", "High", "Low", "Close", "Volume"}
+        level0 = set(df.columns.get_level_values(0))
+        level_last = set(df.columns.get_level_values(-1))
+        df = df.copy()
+        if expected & level0:
+            df.columns = df.columns.get_level_values(0)
+        elif expected & level_last:
+            df.columns = df.columns.get_level_values(-1)
+    return df
+
+
 def resample(df_daily: pd.DataFrame, rule: str) -> pd.DataFrame:
     agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
     r = df_daily.resample(rule).agg(agg).dropna(how="any")
@@ -452,12 +476,12 @@ def fetch_batch(tickers: list) -> dict:
     if len(tickers) == 1:
         t = tickers[0]
         if not data.empty:
-            result[t] = data.dropna(how="all")
+            result[t] = normalize_ohlcv_columns(data.dropna(how="all"))
         return result
 
     for t in tickers:
         try:
-            sub = data[t].dropna(how="all")
+            sub = normalize_ohlcv_columns(data[t].dropna(how="all"))
             if not sub.empty:
                 result[t] = sub
         except (KeyError, Exception):
@@ -481,7 +505,7 @@ def fetch_single(ticker: str, retries: int = 2, sleep_between: float = 3.0):
                 threads=False,
                 progress=False,
             )
-            df = df.dropna(how="all")
+            df = normalize_ohlcv_columns(df.dropna(how="all"))
             if not df.empty:
                 return df
         except Exception:
@@ -499,7 +523,7 @@ def fetch_nifty_daily():
     try:
         df = yf.download(REGIME_INDEX_TICKER, period=HISTORY_PERIOD, interval="1d",
                           auto_adjust=True, progress=False)
-        df = df.dropna(how="all")
+        df = normalize_ohlcv_columns(df.dropna(how="all"))
         if df.empty:
             print("  Could not fetch index data — regime/RS filters disabled for this run.")
             return None

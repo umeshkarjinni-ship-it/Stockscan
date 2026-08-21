@@ -15,9 +15,14 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 150   # generous ceiling; the ~140-stock starter list
-                            # takes a few minutes, a full ~1500-stock
-                            # universe can take well over an hour
+    timeout-minutes: 210   # generous ceiling for a ~2000+ stock universe.
+                            # The ~140-stock starter list takes a few
+                            # minutes; a full ~2000-2100 stock NSE universe
+                            # (via build_universe.py) can take 90-150+
+                            # minutes depending on Yahoo Finance's response
+                            # times that day. GitHub's hard per-job cap is
+                            # 360 minutes on the free tier, so 210 leaves
+                            # real headroom without being unbounded.
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
