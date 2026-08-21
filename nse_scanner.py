@@ -172,7 +172,7 @@ ADX_THRESHOLD = 20                # require ADX above this to accept a BUY
 # Market regime filter — only take a BUY on a stock if the NIFTY 50 index
 # itself is in an uptrend on the same timeframe. Cuts down on buying
 # individual stocks against the broader market current.
-USE_MARKET_REGIME_FILTER = True
+USE_MARKET_REGIME_FILTER = False
 REGIME_INDEX_TICKER = "^NSEI"     # NIFTY 50 on Yahoo Finance
 # IMPORTANT: When NIFTY Weekly VStop is DOWN, all Weekly confirmed BUYs
 # are intentionally blocked by the market-regime filter. The new BUY
