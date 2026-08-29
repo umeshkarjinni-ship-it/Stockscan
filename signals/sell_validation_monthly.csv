@@ -1,0 +1,37 @@
+timeframe,hypothesis,era,hold,n,mean_return,median_return,vs_date_diff,vs_date_ci,vs_date_verdict,vs_stock_diff,vs_stock_ci,vs_stock_verdict
+Monthly,sell_live_rule,IN_SAMPLE(pre-2021),3,1953,7.58,1.98,-0.49,"[-2.52, 1.65]",no edge,10.83,"[8.75, 13.05]",BACKWARDS
+Monthly,sell_live_rule,IN_SAMPLE(pre-2021),6,1953,12.83,2.28,-0.31,"[-3.34, 3.15]",no edge,13.13,"[9.76, 16.69]",BACKWARDS
+Monthly,sell_live_rule,IN_SAMPLE(pre-2021),12,1953,38.8,8.64,-0.21,"[-6.83, 7.59]",no edge,19.49,"[12.7, 27.63]",BACKWARDS
+Monthly,sell_live_rule,OUT_OF_SAMPLE(2021+),3,1445,17.45,9.61,3.31,"[-2.6, 12.51]",no edge,14.35,"[5.06, 25.12]",BACKWARDS
+Monthly,sell_live_rule,OUT_OF_SAMPLE(2021+),6,1237,32.32,7.56,15.55,"[-3.93, 51.03]",no edge,31.45,"[11.09, 67.43]",BACKWARDS
+Monthly,sell_live_rule,OUT_OF_SAMPLE(2021+),12,1141,29.96,2.85,7.65,"[-5.46, 28.37]",no edge,14.01,"[0.35, 35.02]",BACKWARDS
+Monthly,sell_live_rule,OUT_OF_SAMPLE(2023+),3,1085,15.53,12.7,-0.95,"[-4.88, 2.71]",no edge,17.26,"[14.78, 19.93]",BACKWARDS
+Monthly,sell_live_rule,OUT_OF_SAMPLE(2023+),6,877,17.97,9.42,1.62,"[-2.47, 6.75]",no edge,20.83,"[16.6, 26.11]",BACKWARDS
+Monthly,sell_live_rule,OUT_OF_SAMPLE(2023+),12,781,16.72,-1.3,-1.07,"[-7.47, 7.14]",no edge,7.45,"[0.24, 15.6]",BACKWARDS
+Monthly,sell_confirmed,IN_SAMPLE(pre-2021),3,668,5.21,0.8,-3.9,"[-7.45, -0.81]",SELL EDGE,13.22,"[10.73, 15.82]",BACKWARDS
+Monthly,sell_confirmed,IN_SAMPLE(pre-2021),6,668,7.31,0.09,-2.86,"[-6.63, 1.13]",no edge,15.28,"[11.66, 19.0]",BACKWARDS
+Monthly,sell_confirmed,IN_SAMPLE(pre-2021),12,668,21.04,-4.06,-17.91,"[-42.84, 0.45]",no edge,19.0,"[11.08, 29.38]",BACKWARDS
+Monthly,sell_confirmed,OUT_OF_SAMPLE(2021+),3,672,24.12,11.8,9.79,"[-1.21, 28.07]",no edge,28.6,"[18.03, 48.11]",BACKWARDS
+Monthly,sell_confirmed,OUT_OF_SAMPLE(2021+),6,512,59.6,9.77,41.8,"[-3.43, 127.86]",no edge,64.62,"[19.44, 148.45]",BACKWARDS
+Monthly,sell_confirmed,OUT_OF_SAMPLE(2021+),12,453,44.52,2.05,22.59,"[-5.93, 74.33]",no edge,34.87,"[5.44, 87.22]",BACKWARDS
+Monthly,sell_confirmed,OUT_OF_SAMPLE(2023+),3,572,17.19,13.77,-2.21,"[-8.53, 3.67]",no edge,21.98,"[18.19, 26.18]",BACKWARDS
+Monthly,sell_confirmed,OUT_OF_SAMPLE(2023+),6,412,21.19,10.19,3.58,"[-3.9, 12.77]",no edge,23.07,"[14.96, 34.3]",BACKWARDS
+Monthly,sell_confirmed,OUT_OF_SAMPLE(2023+),12,353,22.47,-3.13,0.01,"[-13.16, 15.67]",no edge,13.55,"[0.32, 30.33]",BACKWARDS
+Monthly,sell_excluding_pullback,IN_SAMPLE(pre-2021),3,1935,7.64,2.01,-0.5,"[-2.54, 1.63]",no edge,10.79,"[8.82, 12.91]",BACKWARDS
+Monthly,sell_excluding_pullback,IN_SAMPLE(pre-2021),6,1935,12.99,2.33,0.84,"[-2.28, 4.29]",no edge,13.55,"[10.46, 17.03]",BACKWARDS
+Monthly,sell_excluding_pullback,IN_SAMPLE(pre-2021),12,1935,39.29,9.36,-5.43,"[-16.76, 4.75]",no edge,20.8,"[14.22, 29.24]",BACKWARDS
+Monthly,sell_excluding_pullback,OUT_OF_SAMPLE(2021+),3,1425,17.54,9.58,4.54,"[-1.51, 13.48]",no edge,17.43,"[11.42, 26.81]",BACKWARDS
+Monthly,sell_excluding_pullback,OUT_OF_SAMPLE(2021+),6,1223,32.56,7.56,15.31,"[-4.31, 51.31]",no edge,22.95,"[-3.58, 65.38]",no edge
+Monthly,sell_excluding_pullback,OUT_OF_SAMPLE(2021+),12,1129,29.78,2.3,6.29,"[-6.73, 26.22]",no edge,15.85,"[2.81, 35.32]",BACKWARDS
+Monthly,sell_excluding_pullback,OUT_OF_SAMPLE(2023+),3,1068,15.55,12.76,-0.38,"[-4.04, 3.25]",no edge,15.72,"[12.98, 18.42]",BACKWARDS
+Monthly,sell_excluding_pullback,OUT_OF_SAMPLE(2023+),6,866,18.01,9.34,1.24,"[-3.35, 6.43]",no edge,21.28,"[17.1, 26.56]",BACKWARDS
+Monthly,sell_excluding_pullback,OUT_OF_SAMPLE(2023+),12,772,16.24,-2.02,0.26,"[-6.38, 8.25]",no edge,9.87,"[3.23, 17.8]",BACKWARDS
+Monthly,random_control,IN_SAMPLE(pre-2021),3,2480,8.4,0.16,2.27,"[0.34, 4.41]",BACKWARDS,0.55,"[-2.08, 3.05]",no edge
+Monthly,random_control,IN_SAMPLE(pre-2021),6,2421,15.11,3.45,0.42,"[-2.21, 3.01]",no edge,0.83,"[-1.65, 3.36]",no edge
+Monthly,random_control,IN_SAMPLE(pre-2021),12,2347,36.36,9.25,-2.85,"[-8.68, 2.79]",no edge,1.36,"[-3.4, 6.45]",no edge
+Monthly,random_control,OUT_OF_SAMPLE(2021+),3,1493,8.54,2.91,-3.59,"[-6.31, -1.09]",SELL EDGE,-1.99,"[-4.14, 0.29]",no edge
+Monthly,random_control,OUT_OF_SAMPLE(2021+),6,1434,17.03,4.82,-0.23,"[-3.57, 3.48]",no edge,-1.65,"[-4.89, 1.78]",no edge
+Monthly,random_control,OUT_OF_SAMPLE(2021+),12,1254,34.09,14.98,2.26,"[-3.94, 8.52]",no edge,-1.35,"[-7.23, 5.32]",no edge
+Monthly,random_control,OUT_OF_SAMPLE(2023+),3,939,7.37,0.99,-0.91,"[-3.85, 2.12]",no edge,-0.0,"[-2.51, 2.74]",no edge
+Monthly,random_control,OUT_OF_SAMPLE(2023+),6,873,12.96,2.74,-0.13,"[-3.5, 3.35]",no edge,-0.66,"[-4.19, 2.95]",no edge
+Monthly,random_control,OUT_OF_SAMPLE(2023+),12,784,27.53,7.59,-0.29,"[-6.39, 6.05]",no edge,-3.84,"[-10.6, 3.02]",no edge
