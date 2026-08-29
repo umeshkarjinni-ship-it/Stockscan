@@ -38,6 +38,7 @@ see the .gitignore comment near paper_trades.csv).
 import os
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 
 from nse_scanner import fetch_single
@@ -208,8 +209,34 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         if bars_since_entry.empty:
             continue
 
-        last_price = float(bars_since_entry["Close"].iloc[-1])
-        holding_days = len(bars_since_entry)
+        # Drop bars with no close before marking to market.
+        #
+        # yfinance can hand back a row with NaN OHLC — a placeholder for
+        # the current session, a weekend/holiday artefact, or a bad tick.
+        # Taking .iloc[-1] blindly then wrote NaN into LastPrice AND
+        # UnrealizedReturnPct, which is how every open position lost its
+        # return on 2026-08-29 while HoldingDays still updated: the writes
+        # are not atomic, so a NaN price corrupted half the row.
+        #
+        # Skipping is the right response, not zeroing. update_open_positions
+        # only ever writes values, so `continue` leaves the last good
+        # figures in place rather than overwriting them with garbage.
+        valid_bars = bars_since_entry[bars_since_entry["Close"].notna()]
+        if valid_bars.empty:
+            print(f"  {symbol}: no valid close since entry — leaving position as-is.")
+            continue
+
+        last_price = float(valid_bars["Close"].iloc[-1])
+        if not np.isfinite(last_price) or last_price <= 0:
+            print(f"  {symbol}: implausible last price ({last_price}) — leaving position as-is.")
+            continue
+        if not np.isfinite(entry_price) or entry_price <= 0:
+            print(f"  {symbol}: bad entry price ({entry_price}) — cannot mark to market.")
+            continue
+
+        # Count only bars that actually traded, so a placeholder row does
+        # not inflate the holding period and trip the exit rule early.
+        holding_days = len(valid_bars)
         unrealized = round(((last_price - entry_price) / entry_price) * 100, 2)
 
         # Anomaly check: look at every individual day-over-day move since
@@ -217,7 +244,7 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         # large jump is a strong sign of a bad/stale price tick, an
         # illiquid thin-volume gap, or an unadjusted stock split/bonus,
         # rather than genuine price action.
-        closes = pd.concat([pd.Series([entry_price]), bars_since_entry["Close"]])
+        closes = pd.concat([pd.Series([entry_price]), valid_bars["Close"]])
         daily_moves = closes.pct_change().dropna() * 100
         max_daily_move = daily_moves.abs().max() if not daily_moves.empty else 0.0
 
