@@ -1,0 +1,121 @@
+name: Validate SELL Signals
+
+# The SELL rule (nse_scanner.py:494 -> out["SELL_SIGNAL"] = out["FLIP_DOWN"])
+# has never been benchmarked against a control. This runs the same harness
+# the pullback finding survived, on the SELL side.
+#
+# Manual trigger only, deliberately. This is a decisive one-off test, not a
+# daily job. See the schedule note at the bottom before adding a cron.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_symbols:
+        description: "Cap universe for a smoke run (0 = full universe)"
+        type: string
+        default: "0"
+      timeframes:
+        description: "Which timeframes to run"
+        type: choice
+        options:
+          - both
+          - weekly-only
+          - monthly-only
+        default: both
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    # Weekly and Monthly run as SEPARATE jobs on purpose. GitHub's hard cap
+    # is 360 minutes PER JOB, so splitting gives each timeframe its own
+    # budget instead of sharing one. fail-fast is off so a Monthly timeout
+    # does not kill the Weekly run — Weekly is the one that matters.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tf: W
+            name: weekly
+          - tf: ME
+            name: monthly
+
+    timeout-minutes: 350
+
+    steps:
+      - name: Skip unselected timeframe
+        id: gate
+        run: |
+          SEL="${{ inputs.timeframes }}"
+          TF="${{ matrix.name }}"
+          if [ "$SEL" = "both" ] || [ "$SEL" = "${TF}-only" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping $TF (selection: $SEL)"
+          fi
+
+      - name: Checkout repository
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run SELL validation (${{ matrix.name }})
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          ARGS="--timeframe ${{ matrix.tf }}"
+          if [ "${{ inputs.max_symbols }}" != "0" ] && [ -n "${{ inputs.max_symbols }}" ]; then
+            ARGS="$ARGS --max-symbols ${{ inputs.max_symbols }}"
+          fi
+          echo "Running: python -u validate_sell_signals.py $ARGS"
+          python -u validate_sell_signals.py $ARGS
+
+      - name: Check harness gate (random_control)
+        if: steps.gate.outputs.run == 'true' && always()
+        run: python -u check_harness_gate.py signals/sell_validation_${{ matrix.name }}.csv
+
+      - name: Upload results
+        if: steps.gate.outputs.run == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sell-validation-${{ matrix.name }}-${{ github.run_number }}
+          path: signals/sell_validation_${{ matrix.name }}.csv
+          retention-days: 90
+
+      - name: Commit results
+        if: steps.gate.outputs.run == 'true' && always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          F="signals/sell_validation_${{ matrix.name }}.csv"
+          [ -f "$F" ] && git add "$F" || echo "skip $F"
+          git diff --staged --quiet || git commit -m "SELL validation results (${{ matrix.name }}) [skip ci]"
+          # Both matrix jobs may push. Rebase on whatever landed first.
+          git pull --rebase --autostash || true
+          git push || echo "Nothing to push"
+
+# ---------------------------------------------------------------------
+# NOTE ON SCHEDULING
+#
+# There is no cron here, on purpose. Re-running a significance test until
+# it returns the answer you want is p-hacking, and at a 95% CI you get a
+# false positive roughly 1 run in 20 by construction.
+#
+# If you want periodic re-validation as out-of-sample data accumulates,
+# quarterly is defensible — but write down the verdict BEFORE the run and
+# treat a flip as a reason to investigate, not as a new result.
+# ---------------------------------------------------------------------
+
+permissions:
+  contents: write

@@ -151,6 +151,23 @@ def build_stat_cards(buy_df, sell_df, paper_df):
     return html
 
 
+# A Weekly bar is at most ~7 days old when you see it; anything older is
+# a Monthly bar. Past this age the "moved since bar" figure is mostly
+# measuring the gap between monthly closes, not the signal decaying.
+STALE_BAR_AGE_DAYS = 10
+
+
+def bar_age_days(raw_date):
+    """Calendar days between the signal's bar close and now, or None."""
+    try:
+        d = pd.to_datetime(raw_date)
+        if pd.isna(d):
+            return None
+        return int((pd.Timestamp.now().normalize() - d.normalize()).days)
+    except Exception:
+        return None
+
+
 def build_signal_table(df, title, kind):
     if df is None:
         return f'<section class="panel"><h2>{esc(title)}</h2><p class="empty">No data yet — this file hasn\'t been generated this run.</p></section>'
@@ -166,18 +183,39 @@ def build_signal_table(df, title, kind):
             # from the signal bar — the entry you'd get now differs from
             # the one the signal identified.
             if c == "PriceDriftPct":
+                # Staleness is a property of BAR AGE, not of how far price
+                # moved — the size of the move is already the number in
+                # this cell. Flagging on drift magnitude conflated the
+                # two and made every Monthly row look broken: on
+                # 2026-08-28, TRIVENI/SHANTIGEAR/NSLNISP all showed 23-28%
+                # "drift" purely because their monthly bar closed weeks
+                # earlier. Nothing had gone wrong with those signals.
                 cls = pct_class(r[c])
-                stale = bool(r.get("StalePrice", False))
-                badge = ' <span class="badge flag">STALE</span>' if stale else ""
+                age = bar_age_days(r.get("Date"))
+                if age is not None and age > STALE_BAR_AGE_DAYS:
+                    badge = (f' <span class="badge flag" title="This signal\'s bar '
+                             f'closed {age} days ago. Most of this figure is the gap '
+                             f'between bar closes, not the signal going stale. '
+                             f'Current Price is what you would actually pay — and is '
+                             f'what the paper tracker enters at.">BAR {age}d OLD</span>')
+                else:
+                    badge = ""
                 cells += f"<td class='{cls}'>{esc(val)}{badge}</td>"
             elif c == "PctFrom52WHigh":
                 # Pullback-entry reference. Out-of-sample testing found
                 # entering on a pullback beat entering on strength by
                 # +7-12%; entering on strength was worse than random.
+                #
+                # BUY ROWS ONLY. On a SELL row this badge said "sell now"
+                # and "this is a better-than-average entry" on the same
+                # line — BSE on 2026-08-28 rendered exactly that. Until
+                # validate_sell_signals.py shows the SELL rule has edge on
+                # pullback rows, the badge is suppressed here rather than
+                # shown alongside contradictory advice.
                 badge = (' <span class="badge pullback" title="RSI below 45 and 8%+ '
                          'off the 52-week high with trend intact — historically a '
                          'better entry point than buying strength">PULLBACK</span>'
-                         if in_pullback else "")
+                         if (in_pullback and kind == "buy") else "")
                 cells += f"<td>{esc(val)}{badge}</td>"
             elif c == "RSI":
                 try:
@@ -192,9 +230,13 @@ def build_signal_table(df, title, kind):
     # Friendlier headers — "Price" alone is ambiguous now that both the
     # signal-bar price and the current price are shown.
     header_labels = {
-        "Price": "Signal Price",
+        # "Signal Price" implied it was the price you'd transact at. It is
+        # the close of the completed bar the signal fired on, which on a
+        # Monthly scan can be a month old — and is NOT the price the paper
+        # tracker enters at. Naming it after the bar removes the clash.
+        "Price": "Bar Close",
         "CurrentPrice": "Current Price",
-        "PriceDriftPct": "Drift %",
+        "PriceDriftPct": "Moved Since Bar %",
         "PctFrom52WHigh": "Off 52w High %",
         "VolumeRatio": "Vol Ratio",
         "MLWinProbability": "ML Win %",
@@ -204,6 +246,20 @@ def build_signal_table(df, title, kind):
 
     # Explain the PULLBACK marker where it appears, so the badge means
     # something to a reader who wasn't part of the analysis that produced it.
+    # Applies to both tables: reconciles the two prices shown here with
+    # the single entry price the paper tracker records for the same stock.
+    price_note = ""
+    if "PriceDriftPct" in df.columns:
+        price_note = (
+            '<div class="legend">'
+            '<b>Bar Close</b> is the close of the completed bar this signal fired on — '
+            'up to 7 days old on Weekly, up to ~30 on Monthly. <b>Current Price</b> is '
+            'what you would pay now, and is the price the paper tracker enters at. '
+            'On Monthly rows the gap between them is mostly calendar lag between bar '
+            'closes, not the signal decaying.'
+            '</div>'
+        )
+
     legend = ""
     if kind == "buy" and "PctFrom52WHigh" in df.columns:
         legend = (
@@ -225,6 +281,7 @@ def build_signal_table(df, title, kind):
           <tbody>{rows_html}</tbody>
         </table>
       </div>
+      {price_note}
       {legend}
     </section>'''
 

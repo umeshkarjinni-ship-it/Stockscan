@@ -126,7 +126,7 @@ def signal_table(df, title, kind):
                 f'<p style="font:13px sans-serif;color:#777;margin:0">None today.</p>')
 
     accent = "#0a7d3a" if kind == "buy" else "#b3261e"
-    cols = [c for c in ["Symbol", "Timeframe", "Catergory","Price", "CurrentPrice", "PriceDriftPct",
+    cols = [c for c in ["Symbol", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct",
                         "PctFrom52WHigh", "BuyScore", "RSI", "ADX"] if c in df.columns]
     labels = {"Price": "Signal", "CurrentPrice": "Current", "PriceDriftPct": "Drift %",
               "PctFrom52WHigh": "Off 52w High", "BuyScore": "Score"}
@@ -151,12 +151,22 @@ def signal_table(df, title, kind):
                 try:
                     d = float(r[c])
                     style += f";color:{'#0a7d3a' if d >= 0 else '#b3261e'}"
-                    if abs(d) >= 7:
-                        val += ' <span style="background:#fdeaea;color:#b3261e;font:600 9px sans-serif;' \
-                               'padding:1px 4px;border-radius:2px">STALE</span>'
                 except (TypeError, ValueError):
                     pass
-            if c == "PctFrom52WHigh" and in_pullback:
+                # Flag on BAR AGE, not drift size — see build_dashboard.py.
+                # A Monthly bar closing 30 days ago is not a defect, and
+                # tagging it STALE trained the reader to ignore the flag.
+                try:
+                    bar_date = pd.to_datetime(r.get("Date"))
+                    age = int((pd.Timestamp.now().normalize() - bar_date.normalize()).days)
+                    if age > 10:
+                        val += ('<span style="background:#fdeaea;color:#b3261e;font:600 9px sans-serif;'
+                                f'padding:1px 4px;border-radius:2px">BAR {age}d OLD</span>')
+                except Exception:
+                    pass
+            # BUY rows only. On a SELL row the PULLBACK badge contradicted
+            # the row it sat on.
+            if c == "PctFrom52WHigh" and in_pullback and kind == "buy":
                 val += ' <span style="background:#e6f6ec;color:#0a7d3a;font:600 9px sans-serif;' \
                        'padding:1px 4px;border-radius:2px">PULLBACK</span>'
             cells += f'<td style="{style}">{val}</td>'
