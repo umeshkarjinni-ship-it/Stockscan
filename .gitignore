@@ -20,6 +20,13 @@ signals/*
 # Exception: read by build_dashboard.py to explain why a timeframe
 # produced no BUY signals (regime filter suppression).
 !signals/market_regime.json
+(`!signals/market_regime.json`) so they sit with the other exceptions:
+ 
+# Exception: SELL validation results. Small, and worth keeping in history
+# so a later re-run can be compared against the first verdict instead of
+# silently replacing it. signals/* is a glob, not a directory exclusion,
+# so this negation works.
+!signals/sell_validation_*.csv
 reports/*
 !reports/.gitkeep
 cache/*

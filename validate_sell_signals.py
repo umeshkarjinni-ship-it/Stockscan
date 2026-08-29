@@ -213,6 +213,62 @@ def verdict_for_sell(bs):
     return "no edge"
 
 
+def summarise_consistency(out):
+    """
+    Aggregate the out-of-sample cells per hypothesis.
+
+    This run evaluates 5 hypotheses x 3 eras x 3 holds x 2 controls = 90
+    cells at a 95% CI, so roughly 4-5 will flag on noise alone. Reading a
+    single flagged cell as a finding is the mistake this table exists to
+    prevent. A real effect shows up in MOST out-of-sample cells and points
+    the SAME way; noise shows up in one or two, often in both directions.
+
+    Note the two out-of-sample eras are nested — 2023+ is a subset of
+    2021+ — so agreement between them is weaker evidence than it looks.
+    """
+    oos = out[out["era"].str.startswith("OUT_OF_SAMPLE")]
+    if oos.empty:
+        return
+
+    verdict_cols = [c for c in ["vs_date_verdict", "vs_stock_verdict"] if c in oos.columns]
+    if not verdict_cols:
+        return
+
+    print()
+    print("=" * 104)
+    print("  CONSISTENCY ACROSS OUT-OF-SAMPLE CELLS  (do not read single cells)")
+    print("=" * 104)
+    print(f"  {'hypothesis':<26s} {'cells':>6s} {'SELL EDGE':>10s} {'no edge':>9s} "
+          f"{'BACKWARDS':>10s}   read")
+
+    for hyp in out["hypothesis"].unique():
+        sub = oos[oos["hypothesis"] == hyp]
+        verdicts = [str(v) for c in verdict_cols for v in sub[c].dropna()]
+        if not verdicts:
+            continue
+        total = len(verdicts)
+        n_edge = verdicts.count("SELL EDGE")
+        n_none = verdicts.count("no edge")
+        n_back = verdicts.count("BACKWARDS")
+
+        if n_edge >= 0.6 * total:
+            read = "consistent SELL EDGE"
+        elif n_back >= 0.6 * total:
+            read = "consistent BACKWARDS"
+        elif n_none >= 0.6 * total:
+            read = "no edge"
+        else:
+            read = "mixed — treat as no edge"
+
+        marker = " <-- gate" if hyp == "random_control" else ""
+        print(f"  {hyp:<26s} {total:>6d} {n_edge:>10d} {n_none:>9d} {n_back:>10d}   "
+              f"{read}{marker}")
+
+    print()
+    print("  A finding needs the same direction in MOST cells. One or two flags")
+    print("  scattered across 90 cells is what a 95% CI produces by construction.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--timeframe", choices=["W", "ME"], default="W",
@@ -311,6 +367,9 @@ def main():
     print(f"  SELL SIGNAL VALIDATION — {tf['name']} bars, net of costs")
     print("=" * 104)
     print(out.to_string(index=False))
+
+    summarise_consistency(out)
+
     print()
     print(f"Saved to {out_file}")
     print()

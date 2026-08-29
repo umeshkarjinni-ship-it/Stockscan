@@ -99,11 +99,30 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           F="signals/sell_validation_${{ matrix.name }}.csv"
-          [ -f "$F" ] && git add "$F" || echo "skip $F"
-          git diff --staged --quiet || git commit -m "SELL validation results (${{ matrix.name }}) [skip ci]"
-          # Both matrix jobs may push. Rebase on whatever landed first.
-          git pull --rebase --autostash || true
-          git push || echo "Nothing to push"
+          if [ ! -f "$F" ]; then
+            echo "No results file at $F — nothing to commit."
+            exit 0
+          fi
+          # -f because signals/* is gitignored. The .gitignore carries a
+          # negation for sell_validation_*.csv, but -f means a future
+          # gitignore edit cannot silently drop results again — the first
+          # run lost its commit exactly that way (artifact survived, repo
+          # copy did not).
+          git add -f "$F"
+          if git diff --staged --quiet; then
+            echo "No change in $F since last run."
+            exit 0
+          fi
+          git commit -m "SELL validation results (${{ matrix.name }}) [skip ci]"
+          # Both matrix jobs may push. Rebase onto whichever landed first,
+          # and retry once — a bare push loses the race roughly half the time.
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && { echo "pushed"; exit 0; }
+            echo "push attempt $attempt failed, retrying..."
+            sleep 5
+          done
+          echo "Could not push after 3 attempts — results are still in the artifact."
 
 # ---------------------------------------------------------------------
 # NOTE ON SCHEDULING
