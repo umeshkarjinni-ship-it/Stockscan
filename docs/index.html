@@ -183,8 +183,31 @@
 <header>
   <div class="eyebrow">NSE / BSE · Weekly &amp; Monthly Trend Scanner</div>
   <h1>NiftyPulsePro Dashboard</h1>
-  <div class="meta">Last updated 30 Aug 2026, 05:17 &nbsp;·&nbsp; Research tool, not financial advice</div>
+  <div class="meta">Last updated 30 Aug 2026, 05:55 &nbsp;·&nbsp; Research tool, not financial advice</div>
 </header>
+
+<!-- Mirrors the notice in send_daily_email.py. The dashboard is attached to
+     that email, so a reader who opens the attachment must not lose the
+     framing that came with the message body. -->
+<section class="panel" style="border-color:#e3c9c9;background:#fdf6f6">
+  <h2 style="color:#8a2b2b;font-size:13px;text-transform:uppercase;letter-spacing:.03em">
+    Please read before using this list</h2>
+  <p style="font-size:13px;line-height:1.7;color:#444;margin:6px 0 0">
+    These are <b>screening flags</b>, not recommendations. A symbol appears here
+    because certain price and volume conditions are currently true — nothing more.
+  </p>
+  <p style="font-size:13px;line-height:1.7;color:#444;margin:10px 0 0">
+    This scanner has been tested repeatedly against date-matched and peer-matched
+    controls. <b>No signal in it has shown any ability to predict returns.</b>
+    Buying from this list has tested no better than picking the same stocks at
+    random, before costs. The SELL list has not been shown to identify stocks that
+    subsequently fall.
+  </p>
+  <p style="font-size:13px;line-height:1.7;color:#444;margin:10px 0 0">
+    Use it as a starting point for your own research on a company you already
+    intend to look at. Please do not buy or sell anything because it appears here.
+  </p>
+</section>
 
 <div class="cards">
 <div class="card"><div class="card-label">Today's BUY signals</div><div class="card-value ">13</div></div><div class="card"><div class="card-label">Today's SELL signals</div><div class="card-value ">20</div></div><div class="card"><div class="card-label">Open paper positions</div><div class="card-value ">45</div></div><div class="card"><div class="card-label">Closed paper trades</div><div class="card-value ">0</div></div><div class="card"><div class="card-label">Paper win rate</div><div class="card-value ">—</div></div><div class="card"><div class="card-label">Paper avg return</div><div class="card-value ">—</div></div>
@@ -208,7 +231,7 @@
         </table>
       </div>
       <div class="legend"><b>Bar Close</b> is the close of the completed bar this signal fired on — up to 7 days old on Weekly, up to ~30 on Monthly. <b>Current Price</b> is what you would pay now, and is the price the paper tracker enters at. On Monthly rows the gap between them is mostly calendar lag between bar closes, not the signal decaying.</div>
-      <div class="legend"><b>PULLBACK</b> = RSI under 45, at least 8% below the 52-week high, trend still intact. In out-of-sample testing (2021+ and 2023+), entering on a pullback beat entering on strength by roughly 7-12%, while the strength-based entry this scanner fires on was <i>worse</i> than a random nearby date. Treat it as guidance on <i>when</i> to enter a stock you have already chosen — not as a reason to buy.</div>
+      <div class="legend"><b>PULLBACK</b> = RSI under 45, at least 8% below the 52-week high, trend still intact. This states that those conditions are currently true. It is not a forecast and not a reason to buy.</div>
     </section>
 
     <section class="panel">
