@@ -45,6 +45,7 @@ from nse_scanner import fetch_single
 
 SIGNALS_DIR = "signals"
 RANKED_BUY_FILE = os.path.join(SIGNALS_DIR, "daily_top20_buy_ranked.csv")
+SELL_FILE = os.path.join(SIGNALS_DIR, "daily_top20_sell.csv")
 TRACKER_FILE = os.path.join(SIGNALS_DIR, "paper_trades.csv")
 SUMMARY_FILE = os.path.join(SIGNALS_DIR, "paper_trade_summary.txt")
 
@@ -69,11 +70,27 @@ ANOMALY_1DAY_MOVE_PCT = 15
 HOLD_TRADING_DAYS = 40
 
 TRACKER_COLUMNS = [
-    "Symbol", "Timeframe", "EntryDate", "EntryPrice", "SignalBarPrice", "BuyScore",
-    "Status", "LastCheckedDate", "LastPrice", "UnrealizedReturnPct",
+    # Direction is new. Rows written before it existed are BUY — see
+    # load_tracker(), which backfills rather than dropping them.
+    "Symbol", "Direction", "Timeframe", "EntryDate", "EntryPrice", "SignalBarPrice", "BuyScore",
+    "Status", "LastCheckedDate", "LastPrice", "UnrealizedReturnPct", "SignalReturnPct",
     "ExitDate", "ExitPrice", "ReturnPct", "HoldingDays", "ExitReason",
     "Flag",
 ]
+
+# PriceMovePct vs SignalReturnPct — the distinction matters once SELLs
+# are tracked, and conflating them is the easiest way to get this wrong.
+#
+#   UnrealizedReturnPct / ReturnPct  = what the STOCK did (price move).
+#                                      Same arithmetic for every row.
+#   SignalReturnPct                  = whether the SIGNAL was right.
+#                                      Negated for SELL.
+#
+# A SELL on a stock that then fell 5% is a price move of -5% and a signal
+# return of +5%. Storing only one number would make every correct SELL
+# look like a loss in the win rate, or make the price column mean two
+# different things depending on the row. So both are stored.
+DIRECTIONS = ("BUY", "SELL")
 
 
 def clean_flag(value) -> str:
@@ -97,16 +114,51 @@ def load_tracker() -> pd.DataFrame:
         for col in TRACKER_COLUMNS:
             if col not in df.columns:
                 df[col] = ""
+        # Existing CSVs predate the Direction column. Every row already in
+        # the file was opened from the ranked BUY list, so backfilling is
+        # correct — and it keeps the 25 open positions intact rather than
+        # orphaning them with a blank direction.
+        blank = df["Direction"].isna() | (df["Direction"].astype(str).str.strip() == "")
+        df.loc[blank, "Direction"] = "BUY"
+
+        # Force the exit columns to object dtype before anything writes to
+        # them.
+        #
+        # While no position has closed, ExitDate/ExitPrice/ReturnPct/
+        # ExitReason are entirely empty, so pandas reads them back as
+        # float64 NaN. Assigning a date string into a float64 column
+        # raises TypeError on modern pandas:
+        #
+        #   TypeError: Invalid value '2026-08-30' for dtype 'float64'
+        #
+        # That crash would have fired on the FIRST closure — around
+        # October 2026 — and taken out the run that produces the only
+        # forward evidence this project has. It is latent right now
+        # precisely BECAUSE nothing has closed yet.
+        for col in ("ExitDate", "ExitPrice", "ReturnPct", "ExitReason", "Flag"):
+            df[col] = df[col].astype(object)
         return df[TRACKER_COLUMNS]
     return pd.DataFrame(columns=TRACKER_COLUMNS)
 
 
-def open_new_positions(tracker: pd.DataFrame) -> pd.DataFrame:
-    if not os.path.exists(RANKED_BUY_FILE):
-        print(f"No {RANKED_BUY_FILE} found — run rank_buy.py first. Skipping new entries.")
+def open_new_positions(tracker: pd.DataFrame,
+                      source_file: str = RANKED_BUY_FILE,
+                      direction: str = "BUY") -> pd.DataFrame:
+    """
+    Open paper positions from a signal file.
+
+    Called once per direction. The SELL side has never been tracked, so
+    the SELL rule has no forward evidence at all — every test of it has
+    been a backtest against controls. This is the only way that changes.
+    """
+    if direction not in DIRECTIONS:
+        raise ValueError(f"direction must be one of {DIRECTIONS}, got {direction!r}")
+
+    if not os.path.exists(source_file):
+        print(f"No {source_file} found — skipping new {direction} entries.")
         return tracker
 
-    ranked = pd.read_csv(RANKED_BUY_FILE)
+    ranked = pd.read_csv(source_file)
     today = datetime.now().strftime("%Y-%m-%d")
 
     new_rows = []
@@ -121,6 +173,7 @@ def open_new_positions(tracker: pd.DataFrame) -> pd.DataFrame:
             and (
                 (tracker["Symbol"] == symbol)
                 & (tracker["Timeframe"] == timeframe)
+                & (tracker["Direction"] == direction)
                 & (tracker["Status"] == "OPEN")
             ).any()
         )
@@ -160,6 +213,7 @@ def open_new_positions(tracker: pd.DataFrame) -> pd.DataFrame:
 
         new_rows.append({
             "Symbol": symbol,
+            "Direction": direction,
             "Timeframe": timeframe,
             "EntryDate": today,
             "EntryPrice": round(entry_price, 2),
@@ -169,6 +223,7 @@ def open_new_positions(tracker: pd.DataFrame) -> pd.DataFrame:
             "LastCheckedDate": today,
             "LastPrice": round(entry_price, 2),
             "UnrealizedReturnPct": 0.0,
+            "SignalReturnPct": 0.0,
             "ExitDate": "",
             "ExitPrice": "",
             "ReturnPct": "",
@@ -178,10 +233,10 @@ def open_new_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         })
 
     if new_rows:
-        print(f"Opening {len(new_rows)} new paper position(s) at today's prices.")
+        print(f"Opening {len(new_rows)} new {direction} paper position(s) at today's prices.")
         tracker = pd.concat([tracker, pd.DataFrame(new_rows)], ignore_index=True)
     else:
-        print("No new picks to open (already tracked, or today's list is empty).")
+        print(f"No new {direction} picks to open (already tracked, or today's list is empty).")
 
     return tracker
 
@@ -239,6 +294,11 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         holding_days = len(valid_bars)
         unrealized = round(((last_price - entry_price) / entry_price) * 100, 2)
 
+        # Direction-adjusted. A SELL that was right shows a NEGATIVE price
+        # move and a POSITIVE signal return.
+        direction = str(tracker.at[idx, "Direction"] or "BUY").strip().upper()
+        signal_return = round(unrealized if direction == "BUY" else -unrealized, 2)
+
         # Anomaly check: look at every individual day-over-day move since
         # entry (not just the cumulative return) — a single suspiciously
         # large jump is a strong sign of a bad/stale price tick, an
@@ -263,6 +323,7 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
         tracker.at[idx, "LastCheckedDate"] = today
         tracker.at[idx, "LastPrice"] = round(last_price, 2)
         tracker.at[idx, "UnrealizedReturnPct"] = unrealized
+        tracker.at[idx, "SignalReturnPct"] = signal_return
         tracker.at[idx, "HoldingDays"] = holding_days
         tracker.at[idx, "Flag"] = flag
 
@@ -272,9 +333,12 @@ def update_open_positions(tracker: pd.DataFrame) -> pd.DataFrame:
             tracker.at[idx, "ExitPrice"] = round(last_price, 2)
             tracker.at[idx, "ReturnPct"] = unrealized
             tracker.at[idx, "ExitReason"] = f"Held {HOLD_TRADING_DAYS} trading days"
-            print(f"  Closed {symbol}: {unrealized:+.2f}% after {holding_days} trading days.")
+            print(f"  Closed {symbol} [{direction}]: stock {unrealized:+.2f}%, "
+                  f"signal {signal_return:+.2f}% after {holding_days} trading days.")
         else:
-            print(f"  {symbol}: {unrealized:+.2f}% unrealized, day {holding_days}/{HOLD_TRADING_DAYS}")
+            print(f"  {symbol} [{direction}]: stock {unrealized:+.2f}%, "
+                  f"signal {signal_return:+.2f}% unrealized, "
+                  f"day {holding_days}/{HOLD_TRADING_DAYS}")
 
     return tracker
 
@@ -289,19 +353,55 @@ def build_summary(tracker: pd.DataFrame) -> str:
     lines.append(f"Open positions   : {open_count}")
     lines.append(f"Closed positions : {len(closed)}")
 
+    for d in DIRECTIONS:
+        n = int(((tracker["Status"] == "OPEN") & (tracker["Direction"] == d)).sum())
+        lines.append(f"  open {d:<4s}     : {n}")
+
     if not closed.empty:
-        # Exclude flagged (likely bad-data) trades from stats so a single
-        # anomalous tick doesn't distort the win rate / average return.
-        clean_closed = closed[closed["Flag"].map(clean_flag).str.len() == 0]
-        returns = pd.to_numeric(clean_closed["ReturnPct"], errors="coerce").dropna()
-        if len(returns) > 0:
-            wins = int((returns > 0).sum())
-            lines.append(f"Win rate         : {wins}/{len(returns)} ({(wins/len(returns)*100):.1f}%)")
-            lines.append(f"Average return   : {returns.mean():+.2f}%")
-            lines.append(f"Best trade       : {returns.max():+.2f}%")
-            lines.append(f"Worst trade      : {returns.min():+.2f}%")
+        # Exclude only GENUINE data anomalies, not informational notes.
+        #
+        # Flag holds two different kinds of message. "Flagged: ..." is a
+        # real data-quality problem (an implausible single-day move).
+        # Anything else is informational — most often "Price moved X%
+        # since the signal bar", which fires on nearly every Monthly row
+        # because the signal bar closed up to 30 days earlier.
+        #
+        # Excluding both meant every Monthly SELL was dropped from the
+        # stats, leaving the SELL side with no numbers at all — the exact
+        # thing this tracking was added to produce. Drift is a property of
+        # the signal, not a corrupt price.
+        def _is_anomaly(v):
+            return clean_flag(v).startswith("Flagged:")
+
+        clean_closed = closed[~closed["Flag"].map(_is_anomaly)]
+
+        # Reported PER DIRECTION, never pooled.
+        #
+        # A combined win rate over BUY and SELL is meaningless: the two
+        # test opposite claims, and mixing them lets a good result on one
+        # side mask a bad one on the other. They are separate experiments
+        # that happen to share a tracker file.
+        for d in DIRECTIONS:
+            sub = clean_closed[clean_closed["Direction"] == d]
+            if sub.empty:
+                continue
+            stock = pd.to_numeric(sub["ReturnPct"], errors="coerce").dropna()
+            if stock.empty:
+                continue
+            # Win = the signal was right, so SELL wins when price fell.
+            signal = stock if d == "BUY" else -stock
+            wins = int((signal > 0).sum())
+            lines.append("")
+            lines.append(f"{d} signals ({len(signal)} closed)")
+            lines.append(f"  Win rate       : {wins}/{len(signal)} ({wins/len(signal)*100:.1f}%)")
+            lines.append(f"  Avg signal ret : {signal.mean():+.2f}%")
+            lines.append(f"  Avg stock move : {stock.mean():+.2f}%")
+            lines.append(f"  Best / worst   : {signal.max():+.2f}% / {signal.min():+.2f}%")
+
         if len(clean_closed) < len(closed):
-            lines.append(f"(excluded {len(closed) - len(clean_closed)} flagged trade(s) from these stats — see below)")
+            lines.append("")
+            lines.append(f"(excluded {len(closed) - len(clean_closed)} trade(s) with data "
+                         f"anomalies from these stats — see below)")
     else:
         lines.append("")
         lines.append("No closed trades yet — check back once positions reach")
@@ -313,7 +413,8 @@ def build_summary(tracker: pd.DataFrame) -> str:
         lines.append(f"  {len(flagged)} POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES")
         lines.append("-" * 60)
         for _, r in flagged.iterrows():
-            lines.append(f"  {r['Symbol']} ({r['Timeframe']}): {r['Flag']}")
+            lines.append(f"  {r['Symbol']} [{r.get('Direction', 'BUY')}] "
+                         f"({r['Timeframe']}): {r['Flag']}")
 
     lines.append("")
     lines.append("Not financial advice — forward-tracked results only reflect")
@@ -327,7 +428,8 @@ def main():
     os.makedirs(SIGNALS_DIR, exist_ok=True)
 
     tracker = load_tracker()
-    tracker = open_new_positions(tracker)
+    tracker = open_new_positions(tracker, RANKED_BUY_FILE, "BUY")
+    tracker = open_new_positions(tracker, SELL_FILE, "SELL")
     tracker = update_open_positions(tracker)
 
     tracker.to_csv(TRACKER_FILE, index=False)
