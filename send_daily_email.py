@@ -52,6 +52,10 @@ PAPER_FILE = os.path.join(SIGNALS_DIR, "paper_trades.csv")
 
 EMAIL_FROM = os.environ.get("SCANNER_EMAIL_FROM", "")
 EMAIL_TO = os.environ.get("SCANNER_EMAIL_TO", "")
+# Put friends here, not in SCANNER_EMAIL_TO. Addresses in To are visible to
+# every other recipient; BCC keeps your friends' addresses private from one
+# another. Comma-separated, same format as SCANNER_EMAIL_TO.
+EMAIL_BCC = os.environ.get("SCANNER_EMAIL_BCC", "")
 EMAIL_APP_PASSWORD = os.environ.get("SCANNER_EMAIL_APP_PASSWORD", "")
 
 SMTP_SERVER = os.environ.get("SCANNER_SMTP_SERVER", "smtp.gmail.com")
@@ -67,6 +71,11 @@ DASHBOARD_URL = os.environ.get("SCANNER_DASHBOARD_URL", "")
 # the HTML source, not the rendered page. Attaching sidesteps both problems.
 DASHBOARD_FILE = os.path.join("docs", "index.html")
 ATTACH_DASHBOARD = os.environ.get("SCANNER_ATTACH_DASHBOARD", "1") not in ("0", "false", "False")
+
+# Columns to omit from the tables, comma-separated. Applied to the email and
+# the dashboard alike so the two never disagree.
+#   SCANNER_HIDE_COLS="RSI,ADX,VolRatio"
+HIDE_COLS = {c.strip() for c in os.environ.get("SCANNER_HIDE_COLS", "").split(",") if c.strip()}
 
 # Inline price charts for the top BUY signals.
 #
@@ -127,7 +136,8 @@ def signal_table(df, title, kind):
 
     accent = "#0a7d3a" if kind == "buy" else "#b3261e"
     cols = [c for c in ["Symbol", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct",
-                        "PctFrom52WHigh", "BuyScore", "RSI", "ADX"] if c in df.columns]
+                        "PctFrom52WHigh", "BuyScore", "RSI", "ADX"]
+            if c in df.columns and c not in HIDE_COLS]
     labels = {"Price": "Signal", "CurrentPrice": "Current", "PriceDriftPct": "Drift %",
               "PctFrom52WHigh": "Off 52w High", "BuyScore": "Score"}
 
@@ -179,11 +189,9 @@ def signal_table(df, title, kind):
         f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
         + (
             '<div style="font:11px sans-serif;color:#777;margin-top:8px;line-height:1.6">'
-            '<b style="color:#0a7d3a">PULLBACK</b> = RSI under 45, 8%+ below the 52-week high, '
-            'trend intact. Out-of-sample testing found pullback entries beat strength entries '
-            'by ~7-12%, while the strength entry this scanner fires on tested <i>worse</i> than '
-            'a random nearby date. Use it to time an entry you have already decided on — '
-            'not as a reason to buy.</div>'
+            '<b style="color:#0a7d3a">PULLBACK</b> = RSI under 45, 8%+ below the 52-week '
+            'high, trend intact. This states that those conditions are currently true. '
+            'It is not a forecast, and it is not a reason to buy.</div>'
             if kind == "buy" and "PctFrom52WHigh" in df.columns else ""
         )
     )
@@ -327,6 +335,34 @@ def build_html(charts=None):
         f'<div style="font:700 20px sans-serif;color:#1a1a1a">NiftyPulsePro — Daily Signals</div>',
         f'<div style="font:13px sans-serif;color:#888;margin-top:4px">{today} '
         '&nbsp;·&nbsp; Research tool, not financial advice</div>',
+
+        # Plain-language notice, placed ABOVE the tables.
+        #
+        # "Research tool, not financial advice" is a label, not an
+        # explanation — it tells a reader nothing about what the list is
+        # worth. Anyone receiving stock symbols each morning will assume
+        # they are predictions unless told otherwise, and the testing says
+        # they are not. Putting this after the tables would mean it is read
+        # after the symbols, which is too late to frame them.
+        '<div style="border:1px solid #e3c9c9;background:#fdf6f6;border-radius:6px;'
+        'padding:12px 14px;margin-top:16px">'
+        '<div style="font:600 12px sans-serif;color:#8a2b2b;text-transform:uppercase;'
+        'letter-spacing:.03em">Please read before using this list</div>'
+        '<div style="font:13px/1.6 sans-serif;color:#444;margin-top:6px">'
+        'These are <b>screening flags</b>, not recommendations. A symbol appears '
+        'here because certain price and volume conditions are currently true — '
+        'nothing more.'
+        '<br><br>'
+        'This scanner has been tested repeatedly against date-matched and '
+        'peer-matched controls. <b>No signal in it has shown any ability to '
+        'predict returns.</b> Buying from this list has tested no better than '
+        'picking the same stocks at random, before costs. The SELL list has not '
+        'been shown to identify stocks that subsequently fall.'
+        '<br><br>'
+        'Use it as a starting point for your own research on a company you '
+        'already intend to look at. Please do not buy or sell anything because '
+        'it appears here.'
+        '</div></div>',
     ]
 
     if regime:
@@ -424,6 +460,10 @@ def main():
 
     html = build_html(charts)
     recipients = [a.strip() for a in EMAIL_TO.split(",") if a.strip()]
+    bcc = [a.strip() for a in EMAIL_BCC.split(",") if a.strip()]
+    # BCC addresses are passed to sendmail but deliberately NOT written into
+    # a header — that is what makes them blind.
+    all_rcpt = recipients + [b for b in bcc if b not in recipients]
 
     buy = read_first_available(BUY_FILE, BUY_FALLBACK)
     sell = read_csv_safe(SELL_FILE)
@@ -472,9 +512,11 @@ def main():
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
         server.login(EMAIL_FROM, EMAIL_APP_PASSWORD)
-        server.sendmail(EMAIL_FROM, recipients, msg.as_string())
+        server.sendmail(EMAIL_FROM, all_rcpt, msg.as_string())
 
-    print(f"Email sent to {len(recipients)} recipient(s): {subject}")
+    print(f"Email sent to {len(recipients)} recipient(s)"
+          + (f" + {len(all_rcpt) - len(recipients)} bcc" if len(all_rcpt) > len(recipients) else "")
+          + f": {subject}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,320 @@
+--- a/build_dashboard.py
++++ b/build_dashboard.py
+@@ -151,11 +151,42 @@
+     return html
+ 
+ 
++# A Weekly bar is at most ~7 days old when you see it; anything older is
++# a Monthly bar. Past this age the "moved since bar" figure is mostly
++# measuring the gap between monthly closes, not the signal decaying.
++STALE_BAR_AGE_DAYS = 10
++
++# Columns to omit from the signal tables, comma-separated. Shares the same
++# env var as send_daily_email.py so the dashboard and the email never show
++# different things to the same reader.
++#   SCANNER_HIDE_COLS="RSI,ADX,VolRatio"
++HIDE_COLS = {c.strip() for c in os.environ.get("SCANNER_HIDE_COLS", "").split(",") if c.strip()}
++
++
++def bar_age_days(raw_date):
++    """Calendar days between the signal's bar close and now, or None."""
++    try:
++        d = pd.to_datetime(raw_date)
++        if pd.isna(d):
++            return None
++        return int((pd.Timestamp.now().normalize() - d.normalize()).days)
++    except Exception:
++        return None
++
++
+ def build_signal_table(df, title, kind):
+     if df is None:
+         return f'<section class="panel"><h2>{esc(title)}</h2><p class="empty">No data yet — this file hasn\'t been generated this run.</p></section>'
+ 
+-    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct", "PctFrom52WHigh", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"] if c in df.columns]
++    # "VolRatio" is accepted as an alias for "VolumeRatio" — the scanner
++    # writes VolumeRatio, the dashboard header says "Vol Ratio", and the
++    # rank_buy/scanner mismatch on exactly these two names silently zeroed
++    # the volume component once already.
++    _hide = set(HIDE_COLS)
++    if "VolRatio" in _hide:
++        _hide.add("VolumeRatio")
++    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct", "PctFrom52WHigh", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"]
++            if c in df.columns and c not in _hide]
+     rows_html = ""
+     for _, r in df.head(20).iterrows():
+         cells = ""
+@@ -166,18 +197,39 @@
+             # from the signal bar — the entry you'd get now differs from
+             # the one the signal identified.
+             if c == "PriceDriftPct":
++                # Staleness is a property of BAR AGE, not of how far price
++                # moved — the size of the move is already the number in
++                # this cell. Flagging on drift magnitude conflated the
++                # two and made every Monthly row look broken: on
++                # 2026-08-28, TRIVENI/SHANTIGEAR/NSLNISP all showed 23-28%
++                # "drift" purely because their monthly bar closed weeks
++                # earlier. Nothing had gone wrong with those signals.
+                 cls = pct_class(r[c])
+-                stale = bool(r.get("StalePrice", False))
+-                badge = ' <span class="badge flag">STALE</span>' if stale else ""
++                age = bar_age_days(r.get("Date"))
++                if age is not None and age > STALE_BAR_AGE_DAYS:
++                    badge = (f' <span class="badge flag" title="This signal\'s bar '
++                             f'closed {age} days ago. Most of this figure is the gap '
++                             f'between bar closes, not the signal going stale. '
++                             f'Current Price is what you would actually pay — and is '
++                             f'what the paper tracker enters at.">BAR {age}d OLD</span>')
++                else:
++                    badge = ""
+                 cells += f"<td class='{cls}'>{esc(val)}{badge}</td>"
+             elif c == "PctFrom52WHigh":
+                 # Pullback-entry reference. Out-of-sample testing found
+                 # entering on a pullback beat entering on strength by
+                 # +7-12%; entering on strength was worse than random.
++                #
++                # BUY ROWS ONLY. On a SELL row this badge said "sell now"
++                # and "this is a better-than-average entry" on the same
++                # line — BSE on 2026-08-28 rendered exactly that. Until
++                # validate_sell_signals.py shows the SELL rule has edge on
++                # pullback rows, the badge is suppressed here rather than
++                # shown alongside contradictory advice.
+                 badge = (' <span class="badge pullback" title="RSI below 45 and 8%+ '
+                          'off the 52-week high with trend intact — historically a '
+                          'better entry point than buying strength">PULLBACK</span>'
+-                         if in_pullback else "")
++                         if (in_pullback and kind == "buy") else "")
+                 cells += f"<td>{esc(val)}{badge}</td>"
+             elif c == "RSI":
+                 try:
+@@ -192,9 +244,13 @@
+     # Friendlier headers — "Price" alone is ambiguous now that both the
+     # signal-bar price and the current price are shown.
+     header_labels = {
+-        "Price": "Signal Price",
++        # "Signal Price" implied it was the price you'd transact at. It is
++        # the close of the completed bar the signal fired on, which on a
++        # Monthly scan can be a month old — and is NOT the price the paper
++        # tracker enters at. Naming it after the bar removes the clash.
++        "Price": "Bar Close",
+         "CurrentPrice": "Current Price",
+-        "PriceDriftPct": "Drift %",
++        "PriceDriftPct": "Moved Since Bar %",
+         "PctFrom52WHigh": "Off 52w High %",
+         "VolumeRatio": "Vol Ratio",
+         "MLWinProbability": "ML Win %",
+@@ -204,16 +260,34 @@
+ 
+     # Explain the PULLBACK marker where it appears, so the badge means
+     # something to a reader who wasn't part of the analysis that produced it.
++    # Applies to both tables: reconciles the two prices shown here with
++    # the single entry price the paper tracker records for the same stock.
++    price_note = ""
++    if "PriceDriftPct" in df.columns:
++        price_note = (
++            '<div class="legend">'
++            '<b>Bar Close</b> is the close of the completed bar this signal fired on — '
++            'up to 7 days old on Weekly, up to ~30 on Monthly. <b>Current Price</b> is '
++            'what you would pay now, and is the price the paper tracker enters at. '
++            'On Monthly rows the gap between them is mostly calendar lag between bar '
++            'closes, not the signal decaying.'
++            '</div>'
++        )
++
+     legend = ""
+     if kind == "buy" and "PctFrom52WHigh" in df.columns:
++        # The old text here claimed pullback entries beat strength entries
++        # by 7-12%. That figure came from a same-stock nearby-date control
++        # which flags on 12 of 12 synthetic panels where no edge exists,
++        # because the signal fires at local minima and the control window
++        # includes the decline leading into them. Re-tested against clean
++        # controls, pullback read no edge in all six out-of-sample cells.
++        # The claim is withdrawn; the badge now states the conditions only.
+         legend = (
+             '<div class="legend">'
+             '<b>PULLBACK</b> = RSI under 45, at least 8% below the 52-week high, '
+-            'trend still intact. In out-of-sample testing (2021+ and 2023+), entering '
+-            'on a pullback beat entering on strength by roughly 7-12%, while the '
+-            'strength-based entry this scanner fires on was <i>worse</i> than a random '
+-            'nearby date. Treat it as guidance on <i>when</i> to enter a stock you have '
+-            'already chosen — not as a reason to buy.'
++            'trend still intact. This states that those conditions are currently '
++            'true. It is not a forecast and not a reason to buy.'
+             '</div>'
+         )
+     return f'''
+@@ -225,6 +299,7 @@
+           <tbody>{rows_html}</tbody>
+         </table>
+       </div>
++      {price_note}
+       {legend}
+     </section>'''
+ 
+@@ -568,6 +643,29 @@
+   <div class="meta">Last updated {esc(generated)} &nbsp;·&nbsp; Research tool, not financial advice</div>
+ </header>
+ 
++<!-- Mirrors the notice in send_daily_email.py. The dashboard is attached to
++     that email, so a reader who opens the attachment must not lose the
++     framing that came with the message body. -->
++<section class="panel" style="border-color:#e3c9c9;background:#fdf6f6">
++  <h2 style="color:#8a2b2b;font-size:13px;text-transform:uppercase;letter-spacing:.03em">
++    Please read before using this list</h2>
++  <p style="font-size:13px;line-height:1.7;color:#444;margin:6px 0 0">
++    These are <b>screening flags</b>, not recommendations. A symbol appears here
++    because certain price and volume conditions are currently true — nothing more.
++  </p>
++  <p style="font-size:13px;line-height:1.7;color:#444;margin:10px 0 0">
++    This scanner has been tested repeatedly against date-matched and peer-matched
++    controls. <b>No signal in it has shown any ability to predict returns.</b>
++    Buying from this list has tested no better than picking the same stocks at
++    random, before costs. The SELL list has not been shown to identify stocks that
++    subsequently fall.
++  </p>
++  <p style="font-size:13px;line-height:1.7;color:#444;margin:10px 0 0">
++    Use it as a starting point for your own research on a company you already
++    intend to look at. Please do not buy or sell anything because it appears here.
++  </p>
++</section>
++
+ <div class="cards">
+ {build_stat_cards(buy_df, sell_df, paper_df)}
+ </div>
+--- a/send_daily_email.py
++++ b/send_daily_email.py
+@@ -52,6 +52,10 @@
+ 
+ EMAIL_FROM = os.environ.get("SCANNER_EMAIL_FROM", "")
+ EMAIL_TO = os.environ.get("SCANNER_EMAIL_TO", "")
++# Put friends here, not in SCANNER_EMAIL_TO. Addresses in To are visible to
++# every other recipient; BCC keeps your friends' addresses private from one
++# another. Comma-separated, same format as SCANNER_EMAIL_TO.
++EMAIL_BCC = os.environ.get("SCANNER_EMAIL_BCC", "")
+ EMAIL_APP_PASSWORD = os.environ.get("SCANNER_EMAIL_APP_PASSWORD", "")
+ 
+ SMTP_SERVER = os.environ.get("SCANNER_SMTP_SERVER", "smtp.gmail.com")
+@@ -68,6 +72,11 @@
+ DASHBOARD_FILE = os.path.join("docs", "index.html")
+ ATTACH_DASHBOARD = os.environ.get("SCANNER_ATTACH_DASHBOARD", "1") not in ("0", "false", "False")
+ 
++# Columns to omit from the tables, comma-separated. Applied to the email and
++# the dashboard alike so the two never disagree.
++#   SCANNER_HIDE_COLS="RSI,ADX,VolRatio"
++HIDE_COLS = {c.strip() for c in os.environ.get("SCANNER_HIDE_COLS", "").split(",") if c.strip()}
++
+ # Inline price charts for the top BUY signals.
+ #
+ # Each chart shows Close, the Volatility Stop and KAMA on the signal's own
+@@ -127,7 +136,8 @@
+ 
+     accent = "#0a7d3a" if kind == "buy" else "#b3261e"
+     cols = [c for c in ["Symbol", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct",
+-                        "PctFrom52WHigh", "BuyScore", "RSI", "ADX"] if c in df.columns]
++                        "PctFrom52WHigh", "BuyScore", "RSI", "ADX"]
++            if c in df.columns and c not in HIDE_COLS]
+     labels = {"Price": "Signal", "CurrentPrice": "Current", "PriceDriftPct": "Drift %",
+               "PctFrom52WHigh": "Off 52w High", "BuyScore": "Score"}
+ 
+@@ -151,12 +161,22 @@
+                 try:
+                     d = float(r[c])
+                     style += f";color:{'#0a7d3a' if d >= 0 else '#b3261e'}"
+-                    if abs(d) >= 7:
+-                        val += ' <span style="background:#fdeaea;color:#b3261e;font:600 9px sans-serif;' \
+-                               'padding:1px 4px;border-radius:2px">STALE</span>'
+                 except (TypeError, ValueError):
+                     pass
+-            if c == "PctFrom52WHigh" and in_pullback:
++                # Flag on BAR AGE, not drift size — see build_dashboard.py.
++                # A Monthly bar closing 30 days ago is not a defect, and
++                # tagging it STALE trained the reader to ignore the flag.
++                try:
++                    bar_date = pd.to_datetime(r.get("Date"))
++                    age = int((pd.Timestamp.now().normalize() - bar_date.normalize()).days)
++                    if age > 10:
++                        val += ('<span style="background:#fdeaea;color:#b3261e;font:600 9px sans-serif;'
++                                f'padding:1px 4px;border-radius:2px">BAR {age}d OLD</span>')
++                except Exception:
++                    pass
++            # BUY rows only. On a SELL row the PULLBACK badge contradicted
++            # the row it sat on.
++            if c == "PctFrom52WHigh" and in_pullback and kind == "buy":
+                 val += ' <span style="background:#e6f6ec;color:#0a7d3a;font:600 9px sans-serif;' \
+                        'padding:1px 4px;border-radius:2px">PULLBACK</span>'
+             cells += f'<td style="{style}">{val}</td>'
+@@ -169,11 +189,9 @@
+         f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+         + (
+             '<div style="font:11px sans-serif;color:#777;margin-top:8px;line-height:1.6">'
+-            '<b style="color:#0a7d3a">PULLBACK</b> = RSI under 45, 8%+ below the 52-week high, '
+-            'trend intact. Out-of-sample testing found pullback entries beat strength entries '
+-            'by ~7-12%, while the strength entry this scanner fires on tested <i>worse</i> than '
+-            'a random nearby date. Use it to time an entry you have already decided on — '
+-            'not as a reason to buy.</div>'
++            '<b style="color:#0a7d3a">PULLBACK</b> = RSI under 45, 8%+ below the 52-week '
++            'high, trend intact. This states that those conditions are currently true. '
++            'It is not a forecast, and it is not a reason to buy.</div>'
+             if kind == "buy" and "PctFrom52WHigh" in df.columns else ""
+         )
+     )
+@@ -317,6 +335,34 @@
+         f'<div style="font:700 20px sans-serif;color:#1a1a1a">NiftyPulsePro — Daily Signals</div>',
+         f'<div style="font:13px sans-serif;color:#888;margin-top:4px">{today} '
+         '&nbsp;·&nbsp; Research tool, not financial advice</div>',
++
++        # Plain-language notice, placed ABOVE the tables.
++        #
++        # "Research tool, not financial advice" is a label, not an
++        # explanation — it tells a reader nothing about what the list is
++        # worth. Anyone receiving stock symbols each morning will assume
++        # they are predictions unless told otherwise, and the testing says
++        # they are not. Putting this after the tables would mean it is read
++        # after the symbols, which is too late to frame them.
++        '<div style="border:1px solid #e3c9c9;background:#fdf6f6;border-radius:6px;'
++        'padding:12px 14px;margin-top:16px">'
++        '<div style="font:600 12px sans-serif;color:#8a2b2b;text-transform:uppercase;'
++        'letter-spacing:.03em">Please read before using this list</div>'
++        '<div style="font:13px/1.6 sans-serif;color:#444;margin-top:6px">'
++        'These are <b>screening flags</b>, not recommendations. A symbol appears '
++        'here because certain price and volume conditions are currently true — '
++        'nothing more.'
++        '<br><br>'
++        'This scanner has been tested repeatedly against date-matched and '
++        'peer-matched controls. <b>No signal in it has shown any ability to '
++        'predict returns.</b> Buying from this list has tested no better than '
++        'picking the same stocks at random, before costs. The SELL list has not '
++        'been shown to identify stocks that subsequently fall.'
++        '<br><br>'
++        'Use it as a starting point for your own research on a company you '
++        'already intend to look at. Please do not buy or sell anything because '
++        'it appears here.'
++        '</div></div>',
+     ]
+ 
+     if regime:
+@@ -414,6 +460,10 @@
+ 
+     html = build_html(charts)
+     recipients = [a.strip() for a in EMAIL_TO.split(",") if a.strip()]
++    bcc = [a.strip() for a in EMAIL_BCC.split(",") if a.strip()]
++    # BCC addresses are passed to sendmail but deliberately NOT written into
++    # a header — that is what makes them blind.
++    all_rcpt = recipients + [b for b in bcc if b not in recipients]
+ 
+     buy = read_first_available(BUY_FILE, BUY_FALLBACK)
+     sell = read_csv_safe(SELL_FILE)
+@@ -462,9 +512,11 @@
+     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+         server.starttls()
+         server.login(EMAIL_FROM, EMAIL_APP_PASSWORD)
+-        server.sendmail(EMAIL_FROM, recipients, msg.as_string())
++        server.sendmail(EMAIL_FROM, all_rcpt, msg.as_string())
+ 
+-    print(f"Email sent to {len(recipients)} recipient(s): {subject}")
++    print(f"Email sent to {len(recipients)} recipient(s)"
++          + (f" + {len(all_rcpt) - len(recipients)} bcc" if len(all_rcpt) > len(recipients) else "")
++          + f": {subject}")
+ 
+ 
+ if __name__ == "__main__":

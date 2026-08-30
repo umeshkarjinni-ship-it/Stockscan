@@ -43,6 +43,8 @@ jobs:
           SCANNER_EMAIL_FROM: ${{ secrets.SCANNER_EMAIL_FROM }}
           SCANNER_EMAIL_TO: ${{ secrets.SCANNER_EMAIL_TO }}
           SCANNER_EMAIL_APP_PASSWORD: ${{ secrets.SCANNER_EMAIL_APP_PASSWORD }}
+          SCANNER_EMAIL_BCC: ${{ secrets.SCANNER_EMAIL_BCC }}
+          SCANNER_HIDE_COLS: ${{ secrets.SCANNER_HIDE_COLS }}
           SCANNER_TELEGRAM_TOKEN: ${{ secrets.SCANNER_TELEGRAM_TOKEN }}
           SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
         run: python -u nse_scanner.py
@@ -71,6 +73,8 @@ jobs:
           SCANNER_EMAIL_FROM: ${{ secrets.SCANNER_EMAIL_FROM }}
           SCANNER_EMAIL_TO: ${{ secrets.SCANNER_EMAIL_TO }}
           SCANNER_EMAIL_APP_PASSWORD: ${{ secrets.SCANNER_EMAIL_APP_PASSWORD }}
+          SCANNER_EMAIL_BCC: ${{ secrets.SCANNER_EMAIL_BCC }}
+          SCANNER_HIDE_COLS: ${{ secrets.SCANNER_HIDE_COLS }}
           SCANNER_DASHBOARD_URL: ${{ vars.SCANNER_DASHBOARD_URL }}
         run: python -u send_daily_email.py
 

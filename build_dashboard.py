@@ -156,6 +156,12 @@ def build_stat_cards(buy_df, sell_df, paper_df):
 # measuring the gap between monthly closes, not the signal decaying.
 STALE_BAR_AGE_DAYS = 10
 
+# Columns to omit from the signal tables, comma-separated. Shares the same
+# env var as send_daily_email.py so the dashboard and the email never show
+# different things to the same reader.
+#   SCANNER_HIDE_COLS="RSI,ADX,VolRatio"
+HIDE_COLS = {c.strip() for c in os.environ.get("SCANNER_HIDE_COLS", "").split(",") if c.strip()}
+
 
 def bar_age_days(raw_date):
     """Calendar days between the signal's bar close and now, or None."""
@@ -172,7 +178,15 @@ def build_signal_table(df, title, kind):
     if df is None:
         return f'<section class="panel"><h2>{esc(title)}</h2><p class="empty">No data yet — this file hasn\'t been generated this run.</p></section>'
 
-    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct", "PctFrom52WHigh", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"] if c in df.columns]
+    # "VolRatio" is accepted as an alias for "VolumeRatio" — the scanner
+    # writes VolumeRatio, the dashboard header says "Vol Ratio", and the
+    # rank_buy/scanner mismatch on exactly these two names silently zeroed
+    # the volume component once already.
+    _hide = set(HIDE_COLS)
+    if "VolRatio" in _hide:
+        _hide.add("VolumeRatio")
+    cols = [c for c in ["Symbol", "Name", "Category", "Timeframe", "Price", "CurrentPrice", "PriceDriftPct", "PctFrom52WHigh", "BuyScore", "MLWinProbability", "RSI", "ADX", "VolumeRatio"]
+            if c in df.columns and c not in _hide]
     rows_html = ""
     for _, r in df.head(20).iterrows():
         cells = ""
@@ -262,14 +276,18 @@ def build_signal_table(df, title, kind):
 
     legend = ""
     if kind == "buy" and "PctFrom52WHigh" in df.columns:
+        # The old text here claimed pullback entries beat strength entries
+        # by 7-12%. That figure came from a same-stock nearby-date control
+        # which flags on 12 of 12 synthetic panels where no edge exists,
+        # because the signal fires at local minima and the control window
+        # includes the decline leading into them. Re-tested against clean
+        # controls, pullback read no edge in all six out-of-sample cells.
+        # The claim is withdrawn; the badge now states the conditions only.
         legend = (
             '<div class="legend">'
             '<b>PULLBACK</b> = RSI under 45, at least 8% below the 52-week high, '
-            'trend still intact. In out-of-sample testing (2021+ and 2023+), entering '
-            'on a pullback beat entering on strength by roughly 7-12%, while the '
-            'strength-based entry this scanner fires on was <i>worse</i> than a random '
-            'nearby date. Treat it as guidance on <i>when</i> to enter a stock you have '
-            'already chosen — not as a reason to buy.'
+            'trend still intact. This states that those conditions are currently '
+            'true. It is not a forecast and not a reason to buy.'
             '</div>'
         )
     return f'''
@@ -624,6 +642,29 @@ def main():
   <h1>NiftyPulsePro Dashboard</h1>
   <div class="meta">Last updated {esc(generated)} &nbsp;·&nbsp; Research tool, not financial advice</div>
 </header>
+
+<!-- Mirrors the notice in send_daily_email.py. The dashboard is attached to
+     that email, so a reader who opens the attachment must not lose the
+     framing that came with the message body. -->
+<section class="panel" style="border-color:#e3c9c9;background:#fdf6f6">
+  <h2 style="color:#8a2b2b;font-size:13px;text-transform:uppercase;letter-spacing:.03em">
+    Please read before using this list</h2>
+  <p style="font-size:13px;line-height:1.7;color:#444;margin:6px 0 0">
+    These are <b>screening flags</b>, not recommendations. A symbol appears here
+    because certain price and volume conditions are currently true — nothing more.
+  </p>
+  <p style="font-size:13px;line-height:1.7;color:#444;margin:10px 0 0">
+    This scanner has been tested repeatedly against date-matched and peer-matched
+    controls. <b>No signal in it has shown any ability to predict returns.</b>
+    Buying from this list has tested no better than picking the same stocks at
+    random, before costs. The SELL list has not been shown to identify stocks that
+    subsequently fall.
+  </p>
+  <p style="font-size:13px;line-height:1.7;color:#444;margin:10px 0 0">
+    Use it as a starting point for your own research on a company you already
+    intend to look at. Please do not buy or sell anything because it appears here.
+  </p>
+</section>
 
 <div class="cards">
 {build_stat_cards(buy_df, sell_df, paper_df)}
