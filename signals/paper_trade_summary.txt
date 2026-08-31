@@ -2,17 +2,17 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 30-Aug-2026 05:55
-Open positions   : 45
+Generated        : 31-Aug-2026 08:59
+Open positions   : 64
 Closed positions : 0
-  open BUY      : 25
-  open SELL     : 20
+  open BUY      : 27
+  open SELL     : 37
 
 No closed trades yet — check back once positions reach
 the 40-trading-day holding period.
 
 ------------------------------------------------------------
-  7 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
+  8 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
 ------------------------------------------------------------
   BOSCHLTD [BUY] (Monthly): Price moved +14.1% since the signal bar (41278.36 -> 47100.00)
   CNL [BUY] (Monthly): Price moved +24.7% since the signal bar (997.15 -> 1243.00)
@@ -21,6 +21,7 @@ the 40-trading-day holding period.
   TRIVENI [SELL] (Monthly): Price moved +28.1% since the signal bar (221.50 -> 283.82)
   NSLNISP [SELL] (Weekly): Price moved +23.2% since the signal bar (39.79 -> 49.02)
   SHANTIGEAR [SELL] (Monthly): Price moved +25.6% since the signal bar (412.30 -> 517.75)
+  WEL [SELL] (Weekly): Price moved -10.0% since the signal bar (99.80 -> 89.82)
 
 Not financial advice — forward-tracked results only reflect
 this specific rule set and holding period, not any trade you
