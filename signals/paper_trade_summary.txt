@@ -2,7 +2,7 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 03-Sep-2026 07:29
+Generated        : 04-Sep-2026 07:31
 Open positions   : 86
 Closed positions : 0
   open BUY      : 44
@@ -22,7 +22,7 @@ the 40-trading-day holding period.
   ANTELOPUS [BUY] (Monthly): Flagged: +20.0% single-day move — verify price data before trusting this result
   TRIVENI [SELL] (Monthly): Price moved +28.1% since the signal bar (221.50 -> 283.82)
   NSLNISP [SELL] (Weekly): Price moved +23.2% since the signal bar (39.79 -> 49.02)
-  SHANTIGEAR [SELL] (Monthly): Price moved +25.6% since the signal bar (412.30 -> 517.75)
+  SHANTIGEAR [SELL] (Monthly): Price moved +25.6% since the signal bar (412.30 -> 517.75) | Flagged: +18.9% single-day move — verify price data before trusting this result
   WEL [SELL] (Weekly): Price moved -10.0% since the signal bar (99.80 -> 89.82)
   KALYANIFRG [BUY] (Weekly): Price moved +44.0% since the signal bar (761.95 -> 1097.15)
   MANAKSTEEL [BUY] (Monthly): Price moved +10.2% since the signal bar (94.79 -> 104.49)
