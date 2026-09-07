@@ -2,11 +2,11 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 04-Sep-2026 07:31
-Open positions   : 86
+Generated        : 07-Sep-2026 07:37
+Open positions   : 102
 Closed positions : 0
-  open BUY      : 44
-  open SELL     : 42
+  open BUY      : 46
+  open SELL     : 56
 
 No closed trades yet — check back once positions reach
 the 40-trading-day holding period.
