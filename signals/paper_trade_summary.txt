@@ -2,7 +2,7 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 10-Sep-2026 07:37
+Generated        : 11-Sep-2026 07:33
 Open positions   : 102
 Closed positions : 0
   open BUY      : 46
@@ -27,7 +27,7 @@ the 40-trading-day holding period.
   ASTEC [SELL] (Weekly): Flagged: +20.0% single-day move — verify price data before trusting this result
   KALYANIFRG [BUY] (Weekly): Price moved +44.0% since the signal bar (761.95 -> 1097.15)
   MANAKSTEEL [BUY] (Monthly): Price moved +10.2% since the signal bar (94.79 -> 104.49)
-  ATALREAL [SELL] (Weekly): Flagged: +28.0% single-day move — verify price data before trusting this result
+  ATALREAL [SELL] (Weekly): Flagged: +20.1% single-day move — verify price data before trusting this result
 
 Not financial advice — forward-tracked results only reflect
 this specific rule set and holding period, not any trade you
