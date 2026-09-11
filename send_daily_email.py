@@ -419,18 +419,41 @@ def build_html(charts=None):
     parts.append(signal_table(sell, "SELL Signals", "sell"))
 
     if paper is not None and "Status" in paper.columns:
-        open_n = int((paper["Status"] == "OPEN").sum())
-        closed = paper[paper["Status"] == "CLOSED"]
-        line = f"{open_n} open position(s)"
-        if len(closed):
-            ret = pd.to_numeric(closed["ReturnPct"], errors="coerce").dropna()
-            if len(ret):
-                line += (f" · {len(ret)} closed, win rate "
-                         f"{(ret > 0).mean() * 100:.0f}%, avg {ret.mean():+.2f}%")
+        pdf = paper.copy()
+        # Older rows predate the Direction column; every row that exists
+        # was opened from the BUY list back then.
+        if "Direction" not in pdf.columns:
+            pdf["Direction"] = "BUY"
+        else:
+            blank = pdf["Direction"].isna() | (pdf["Direction"].astype(str).str.strip() == "")
+            pdf.loc[blank, "Direction"] = "BUY"
+
+        lines = []
+        for direction in ("BUY", "SELL"):
+            sub = pdf[pdf["Direction"].astype(str).str.upper() == direction]
+            if sub.empty:
+                continue
+            open_n = int((sub["Status"] == "OPEN").sum())
+            closed = sub[sub["Status"] == "CLOSED"]
+            line = f"{direction}: {open_n} open"
+            if len(closed):
+                # SignalReturnPct = whether the call was right (negated for
+                # SELL), not the raw stock move — pooling BUY and SELL on
+                # raw ReturnPct would show a correct SELL as a loss.
+                signal_col = "SignalReturnPct" if "SignalReturnPct" in closed.columns else "ReturnPct"
+                ret = pd.to_numeric(closed[signal_col], errors="coerce").dropna()
+                if signal_col == "ReturnPct" and direction == "SELL":
+                    ret = -ret
+                if len(ret):
+                    line += (f" · {len(ret)} closed, win rate "
+                             f"{(ret > 0).mean() * 100:.0f}%, avg {ret.mean():+.2f}%")
+            lines.append(esc(line))
+
         parts.append(
             '<div style="margin-top:24px;padding-top:14px;border-top:1px solid #eee">'
             '<span style="font:600 12px sans-serif;color:#555">PAPER TRACKER</span><br>'
-            f'<span style="font:13px sans-serif;color:#333">{esc(line)}</span></div>'
+            + "".join(f'<span style="font:13px sans-serif;color:#333">{ln}</span><br>' for ln in lines)
+            + '</div>'
         )
 
     if DASHBOARD_URL:

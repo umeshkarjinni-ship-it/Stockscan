@@ -125,25 +125,54 @@ def build_stat_cards(buy_df, sell_df, paper_df):
     buy_count = len(buy_df) if buy_df is not None else 0
     sell_count = len(sell_df) if sell_df is not None else 0
 
-    open_count = closed_count = win_rate = avg_return = None
-    if paper_df is not None:
-        open_count = int((paper_df["Status"] == "OPEN").sum())
-        closed = paper_df[paper_df["Status"] == "CLOSED"]
-        closed_count = len(closed)
-        if closed_count > 0:
-            returns = pd.to_numeric(closed["ReturnPct"], errors="coerce").dropna()
-            if len(returns) > 0:
-                win_rate = (returns > 0).mean() * 100
-                avg_return = returns.mean()
-
     cards = [
         ("Today's BUY signals", str(buy_count), ""),
         ("Today's SELL signals", str(sell_count), ""),
-        ("Open paper positions", str(open_count) if open_count is not None else "—", ""),
-        ("Closed paper trades", str(closed_count) if closed_count is not None else "—", ""),
-        ("Paper win rate", fmt_num(win_rate, 1, "%") if win_rate is not None else "—", pct_class(win_rate) if win_rate is not None else ""),
-        ("Paper avg return", fmt_num(avg_return, 2, "%") if avg_return is not None else "—", pct_class(avg_return) if avg_return is not None else ""),
     ]
+
+    if paper_df is not None:
+        df = paper_df.copy()
+        # Older paper_trades.csv rows predate the Direction column — every
+        # row that exists is one this dashboard already showed as a BUY,
+        # so treat a missing/blank Direction as BUY rather than dropping it.
+        if "Direction" not in df.columns:
+            df["Direction"] = "BUY"
+        else:
+            blank = df["Direction"].isna() | (df["Direction"].astype(str).str.strip() == "")
+            df.loc[blank, "Direction"] = "BUY"
+
+        # Reported per direction, never pooled — a win rate that mixes BUY
+        # and SELL closed trades lets one side's result mask the other's,
+        # same reasoning as signals/paper_trade_summary.txt.
+        for direction in ("BUY", "SELL"):
+            sub = df[df["Direction"].astype(str).str.upper() == direction]
+            open_n = int((sub["Status"] == "OPEN").sum())
+            closed = sub[sub["Status"] == "CLOSED"]
+
+            win_rate = avg_return = None
+            if len(closed) > 0:
+                # SignalReturnPct is whether the CALL was right (negated for
+                # SELL), not the raw stock move — using ReturnPct here would
+                # colour a correct SELL (price fell) as a loss.
+                signal_col = "SignalReturnPct" if "SignalReturnPct" in closed.columns else "ReturnPct"
+                signal_returns = pd.to_numeric(closed[signal_col], errors="coerce").dropna()
+                if signal_col == "ReturnPct" and direction == "SELL":
+                    signal_returns = -signal_returns
+                if len(signal_returns) > 0:
+                    win_rate = (signal_returns > 0).mean() * 100
+                    avg_return = signal_returns.mean()
+
+            cards.append((f"Open {direction} positions", str(open_n), ""))
+            cards.append((
+                f"{direction} win rate ({len(closed)} closed)",
+                fmt_num(win_rate, 1, "%") if win_rate is not None else "—",
+                pct_class(win_rate) if win_rate is not None else "",
+            ))
+            cards.append((
+                f"{direction} avg signal return",
+                fmt_num(avg_return, 2, "%") if avg_return is not None else "—",
+                pct_class(avg_return) if avg_return is not None else "",
+            ))
 
     html = ""
     for label, value, cls in cards:
@@ -309,19 +338,48 @@ def build_paper_table(df):
         return '<section class="panel"><h2>Paper Trade Tracker</h2><p class="empty">No tracked positions yet — the tracker opens its first positions after the next daily scan.</p></section>'
 
     df = df.copy()
+    if "Direction" not in df.columns:
+        df["Direction"] = "BUY"
+    else:
+        blank = df["Direction"].isna() | (df["Direction"].astype(str).str.strip() == "")
+        df.loc[blank, "Direction"] = "BUY"
     df["_sort"] = (df["Status"] == "OPEN").astype(int)
     df = df.sort_values(["_sort", "EntryDate"], ascending=[False, False])
 
+    has_signal_col = "SignalReturnPct" in df.columns
+
     rows_html = ""
     for _, r in df.iterrows():
+        direction = str(r.get("Direction", "BUY") or "BUY").strip().upper()
+        dir_cls = "dir-buy" if direction == "BUY" else "dir-sell"
+        dir_html = f'<span class="badge {dir_cls}">{esc(direction)}</span>'
+
         status = r.get("Status", "")
-        if status == "OPEN":
-            ret = r.get("UnrealizedReturnPct", "")
-            ret_label = f'{fmt_num(ret, 2, "%")} <span class="badge open">OPEN</span>'
+        # Show whether the CALL was right, not just the raw stock move — a
+        # SELL that fell 5% is a correct call (+5% signal return) even
+        # though the stock itself moved -5%. Using the raw price field here
+        # would colour every winning SELL as a loss and vice versa.
+        stock_move = r.get("UnrealizedReturnPct", "") if status == "OPEN" else r.get("ReturnPct", "")
+        if has_signal_col and str(r.get("SignalReturnPct", "")).strip() != "":
+            signal_ret = r.get("SignalReturnPct", "")
         else:
-            ret = r.get("ReturnPct", "")
-            ret_label = f'{fmt_num(ret, 2, "%")} <span class="badge closed">CLOSED</span>'
-        cls = pct_class(ret)
+            try:
+                signal_ret = -float(stock_move) if direction == "SELL" else stock_move
+            except (TypeError, ValueError):
+                signal_ret = stock_move
+
+        move_note = ""
+        try:
+            if float(stock_move) != float(signal_ret):
+                move_note = f' title="Stock price moved {fmt_num(stock_move, 2, "%")}"'
+        except (TypeError, ValueError):
+            pass
+
+        if status == "OPEN":
+            ret_label = f'{fmt_num(signal_ret, 2, "%")} <span class="badge open">OPEN</span>'
+        else:
+            ret_label = f'{fmt_num(signal_ret, 2, "%")} <span class="badge closed">CLOSED</span>'
+        cls = pct_class(signal_ret)
         flag = str(r.get("Flag", "") or "").strip()
         # pandas turns empty CSV cells into NaN, and str(NaN) == "nan" —
         # a non-empty string that would otherwise badge every position
@@ -342,10 +400,10 @@ def build_paper_table(df):
         else:
             flag_html = ""
         rows_html += (
-            f"<tr><td>{esc(r.get('Symbol',''))}</td><td>{esc(r.get('Timeframe',''))}</td>"
+            f"<tr><td>{esc(r.get('Symbol',''))}</td><td>{dir_html}</td><td>{esc(r.get('Timeframe',''))}</td>"
             f"<td>{esc(r.get('EntryDate',''))}</td><td>{fmt_num(r.get('EntryPrice',''))}</td>"
             f"<td>{esc(r.get('HoldingDays',''))}</td>"
-            f"<td class='{cls}'>{ret_label}{flag_html}</td></tr>"
+            f"<td class='{cls}'{move_note}>{ret_label}{flag_html}</td></tr>"
         )
 
     return f'''
@@ -353,9 +411,14 @@ def build_paper_table(df):
       <h2>Paper Trade Tracker <span class="subhead">— today's picks, tracked forward</span></h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Symbol</th><th>Timeframe</th><th>Entry Date</th><th>Entry Price</th><th>Days Held</th><th>Return</th></tr></thead>
+          <thead><tr><th>Symbol</th><th>Direction</th><th>Timeframe</th><th>Entry Date</th><th>Entry Price</th><th>Days Held</th><th>Signal Return</th></tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
+      </div>
+      <div class="legend">
+        <b>Direction</b> is which recommendation opened this position — BUY or SELL. <b>Signal Return</b> is
+        whether that call was right (a SELL that fell in price shows a positive return here), not the raw
+        stock price move — hover a row where they differ to see the stock's own move.
       </div>
     </section>'''
 
@@ -596,6 +659,8 @@ def main():
   .badge.open {{ background: rgba(212,162,76,0.15); color: var(--gold); }}
   .badge.closed {{ background: rgba(139,147,161,0.15); color: var(--muted); }}
   .badge.flag {{ background: rgba(248,113,113,0.15); color: var(--neg); cursor: help; }}
+  .badge.dir-buy {{ background: rgba(74,222,128,0.15); color: var(--pos); font-weight: 600; }}
+  .badge.dir-sell {{ background: rgba(248,113,113,0.15); color: var(--neg); font-weight: 600; }}
   .regime-panel {{ border-color: rgba(212,162,76,0.3); }}
   .regime-row {{ display:flex; gap:16px; flex-wrap:wrap; }}
   .regime-pill {{ background:#10151D; border:1px solid var(--border); border-radius:4px;
