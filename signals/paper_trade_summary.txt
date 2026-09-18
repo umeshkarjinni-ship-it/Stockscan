@@ -2,7 +2,7 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 17-Sep-2026 08:07
+Generated        : 18-Sep-2026 07:43
 Open positions   : 120
 Closed positions : 0
   open BUY      : 47
