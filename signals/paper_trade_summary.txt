@@ -2,17 +2,17 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 21-Sep-2026 08:18
-Open positions   : 136
+Generated        : 22-Sep-2026 08:03
+Open positions   : 139
 Closed positions : 0
   open BUY      : 47
-  open SELL     : 89
+  open SELL     : 92
 
 No closed trades yet — check back once positions reach
 the 40-trading-day holding period.
 
 ------------------------------------------------------------
-  16 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
+  17 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
 ------------------------------------------------------------
   BOSCHLTD [BUY] (Monthly): Price moved +14.1% since the signal bar (41278.36 -> 47100.00)
   TBZ [BUY] (Monthly): Flagged: +20.0% single-day move — verify price data before trusting this result
@@ -28,6 +28,7 @@ the 40-trading-day holding period.
   ASTEC [SELL] (Weekly): Flagged: +20.0% single-day move — verify price data before trusting this result
   KALYANIFRG [BUY] (Weekly): Price moved +44.0% since the signal bar (761.95 -> 1097.15)
   MANAKSTEEL [BUY] (Monthly): Price moved +10.2% since the signal bar (94.79 -> 104.49)
+  INDORAMA [BUY] (Monthly): Flagged: +17.5% single-day move — verify price data before trusting this result
   ATALREAL [SELL] (Weekly): Flagged: +20.1% single-day move — verify price data before trusting this result
   PNCINFRA [SELL] (Weekly): Flagged: +20.0% single-day move — verify price data before trusting this result
 
