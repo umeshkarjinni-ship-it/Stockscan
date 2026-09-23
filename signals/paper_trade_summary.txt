@@ -2,19 +2,20 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 22-Sep-2026 08:03
-Open positions   : 139
+Generated        : 23-Sep-2026 08:03
+Open positions   : 140
 Closed positions : 0
   open BUY      : 47
-  open SELL     : 92
+  open SELL     : 93
 
 No closed trades yet — check back once positions reach
 the 40-trading-day holding period.
 
 ------------------------------------------------------------
-  17 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
+  18 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
 ------------------------------------------------------------
   BOSCHLTD [BUY] (Monthly): Price moved +14.1% since the signal bar (41278.36 -> 47100.00)
+  PREMIERPOL [BUY] (Monthly): Flagged: +22.6% single-day move — verify price data before trusting this result
   TBZ [BUY] (Monthly): Flagged: +20.0% single-day move — verify price data before trusting this result
   CNL [BUY] (Monthly): Price moved +24.7% since the signal bar (997.15 -> 1243.00)
   MMFL [BUY] (Monthly): Price moved +10.2% since the signal bar (535.00 -> 589.75)
@@ -28,7 +29,7 @@ the 40-trading-day holding period.
   ASTEC [SELL] (Weekly): Flagged: +20.0% single-day move — verify price data before trusting this result
   KALYANIFRG [BUY] (Weekly): Price moved +44.0% since the signal bar (761.95 -> 1097.15)
   MANAKSTEEL [BUY] (Monthly): Price moved +10.2% since the signal bar (94.79 -> 104.49)
-  INDORAMA [BUY] (Monthly): Flagged: +17.5% single-day move — verify price data before trusting this result
+  INDORAMA [BUY] (Monthly): Flagged: +17.0% single-day move — verify price data before trusting this result
   ATALREAL [SELL] (Weekly): Flagged: +20.1% single-day move — verify price data before trusting this result
   PNCINFRA [SELL] (Weekly): Flagged: +20.0% single-day move — verify price data before trusting this result
 
