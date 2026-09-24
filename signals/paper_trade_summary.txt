@@ -2,7 +2,7 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 23-Sep-2026 08:03
+Generated        : 24-Sep-2026 07:57
 Open positions   : 140
 Closed positions : 0
   open BUY      : 47
@@ -15,7 +15,7 @@ the 40-trading-day holding period.
   18 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
 ------------------------------------------------------------
   BOSCHLTD [BUY] (Monthly): Price moved +14.1% since the signal bar (41278.36 -> 47100.00)
-  PREMIERPOL [BUY] (Monthly): Flagged: +22.6% single-day move — verify price data before trusting this result
+  PREMIERPOL [BUY] (Monthly): Flagged: +19.4% single-day move — verify price data before trusting this result
   TBZ [BUY] (Monthly): Flagged: +20.0% single-day move — verify price data before trusting this result
   CNL [BUY] (Monthly): Price moved +24.7% since the signal bar (997.15 -> 1243.00)
   MMFL [BUY] (Monthly): Price moved +10.2% since the signal bar (535.00 -> 589.75)
