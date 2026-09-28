@@ -2,17 +2,17 @@
   NIFTYPULSEPRO — DAILY RECOMMENDATION TRACKER
 ============================================================
 
-Generated        : 25-Sep-2026 08:12
-Open positions   : 140
+Generated        : 28-Sep-2026 09:01
+Open positions   : 156
 Closed positions : 0
-  open BUY      : 47
-  open SELL     : 93
+  open BUY      : 49
+  open SELL     : 107
 
 No closed trades yet — check back once positions reach
 the 40-trading-day holding period.
 
 ------------------------------------------------------------
-  18 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
+  20 POSITION(S) FLAGGED FOR SUSPICIOUS PRICE MOVES
 ------------------------------------------------------------
   BOSCHLTD [BUY] (Monthly): Price moved +14.1% since the signal bar (41278.36 -> 47100.00)
   PREMIERPOL [BUY] (Monthly): Flagged: +19.4% single-day move — verify price data before trusting this result
@@ -32,6 +32,8 @@ the 40-trading-day holding period.
   INDORAMA [BUY] (Monthly): Flagged: +17.0% single-day move — verify price data before trusting this result
   ATALREAL [SELL] (Weekly): Flagged: +20.1% single-day move — verify price data before trusting this result
   PNCINFRA [SELL] (Weekly): Flagged: +20.0% single-day move — verify price data before trusting this result
+  SSDL [BUY] (Weekly): Price moved +11.7% since the signal bar (73.31 -> 81.90)
+  MEDICO [SELL] (Weekly): Price moved -14.2% since the signal bar (26.00 -> 22.30)
 
 Not financial advice — forward-tracked results only reflect
 this specific rule set and holding period, not any trade you
